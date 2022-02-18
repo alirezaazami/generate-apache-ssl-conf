@@ -24,8 +24,8 @@ subjectAltName = @alt_names
 DNS.1 = localhost
 DNS.2 = 127.0.0.1${1}"
 
-if [ -f ${pwd}/openssl.conf ];then
-    rm -f ${pwd}/openssl.conf
+if [ -f ${2}/openssl.conf ];then
+    rm -f ${2}/openssl.conf
 fi
 echo "$openssl_config" >> "${2}/openssl.conf"
 
