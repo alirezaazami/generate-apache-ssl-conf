@@ -10,7 +10,7 @@ if [ "${2}" = "localhost" ] || [ "${2}" = "127.0.0.1" ] ;then
 fi
 
 ssl_dir="${3}"
-site_enabled=/etc/httpd/sites-enabled
+site_enabled=/etc/apache2/sites-enabled
 
 #umask 000
 #if [ ! -d $dirname ]; then

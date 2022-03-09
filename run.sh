@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 pwd=$(dirname $(readlink -f $0)) # current path relative
 
 html=/var/www/html
@@ -52,5 +52,5 @@ sudo /bin/bash ${pwd}/create_certificate.sh "${openssl_config}" "${html}" "${ssl
 sudo /bin/bash ${pwd}/create_new_hosts.sh "${hosts}"
 #end
 
-sudo systemctl restart httpd php-fpm
+sudo systemctl restart apache2 php-fpm
 
