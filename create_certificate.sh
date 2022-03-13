@@ -29,7 +29,17 @@ if [ -f ${2}/openssl.conf ];then
 fi
 echo "$openssl_config" >> "${2}/openssl.conf"
 
+if [ ! -d "${ssl_dir}" ];then
+    sudo mkdir "${ssl_dir}"
+fi
 
+if [ ! -d "${ssl_dir}/certs/" ];then
+    sudo mkdir "${ssl_dir}/certs/"
+fi
+
+if [ ! -d "${ssl_dir}/private/" ];then
+    sudo mkdir "${ssl_dir}/private/"
+fi
 
 
 if [ -f ${ssl_dir}/certs/localhost.crt ];then
