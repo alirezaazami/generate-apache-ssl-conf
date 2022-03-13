@@ -6,6 +6,9 @@ ssl_dir=/etc/pki/tls
 
 openssl_config=''
 
+sudo a2enmod rewrite
+sudo a2enmod ssl
+sudo service apache2 restart
 
 
 cd ${html}
