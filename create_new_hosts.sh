@@ -7,8 +7,6 @@ if [ $start_line=='' ];then
 	sudo echo ${1} >> /etc/hosts
 	sudo echo "#endweb" >> /etc/hosts
 else
-	echo 'no'
-	exit 0
 	start_line=$(($start_line+1))
 	sudo sed -iz "${start_line}s/.*/${1}/" /etc/hosts
 	

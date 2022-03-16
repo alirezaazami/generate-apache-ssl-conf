@@ -26,6 +26,8 @@ virtusl_host=$(cat << EOF
         AllowOverride All
         Require all granted
     </Directory>
+     ErrorLog $dirname/error.log
+     CustomLog $dirname/access.log combined
 </VirtualHost>
 
 <VirtualHost *:443>
@@ -36,7 +38,8 @@ virtusl_host=$(cat << EOF
         AllowOverride All
         Require all granted
     </Directory>
-
+     ErrorLog $dirname/error.log
+     CustomLog $dirname/access.log combined
     SSLEngine on
     SSLCertificateFile      ${ssl_dir}/certs/localhost.crt
     SSLCertificateKeyFile   ${ssl_dir}/private/localhost.key

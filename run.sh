@@ -55,5 +55,5 @@ sudo /bin/bash ${pwd}/create_certificate.sh "${openssl_config}" "${html}" "${ssl
 sudo /bin/bash ${pwd}/create_new_hosts.sh "${hosts}"
 #end
 
-sudo systemctl restart apache2 php-fpm
+sudo systemctl restart apache2 php7.4-fpm
 
