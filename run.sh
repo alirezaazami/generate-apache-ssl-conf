@@ -15,7 +15,7 @@ cd ${html}
 
 i=3
 website=''
-hosts="127.0.0.1\t"
+hosts="127.0.0.1     "
 
 sudo /bin/bash ${pwd}/create_apache_conf.sh ${html} localhost ${ssl_dir}
 sudo /bin/bash ${pwd}/create_apache_conf.sh ${html} 127.0.0.1 ${ssl_dir}
