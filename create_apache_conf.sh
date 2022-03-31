@@ -16,6 +16,7 @@ site_enabled=/etc/apache2/sites-enabled
 #if [ ! -d $dirname ]; then
 #mkdir $dirname
 #fi
+ sudo rm -rf "${site_enabled}/*"
 
 virtusl_host=$(cat << EOF
 <VirtualHost *:80> 
