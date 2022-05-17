@@ -22,7 +22,7 @@ virtusl_host=$(cat << EOF
 <VirtualHost *:80> 
     DocumentRoot "$dirname"
     ServerName ${2}
-    ServerAlias *.${2}
+#    ServerAlias *.${2}
     <Directory "${dirname}">
         AllowOverride All
         Require all granted
@@ -34,7 +34,7 @@ virtusl_host=$(cat << EOF
 <VirtualHost *:443>
     DocumentRoot "$dirname"
     ServerName ${2}
-    ServerAlias *.${2}
+#    ServerAlias *.${2}
     <Directory "${dirname}">
         AllowOverride All
         Require all granted
