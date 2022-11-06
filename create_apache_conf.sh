@@ -60,7 +60,11 @@ EOF
 # sudo rm -f "${site_enabled}/${2}.conf"
 echo "$virtusl_host" >> "${dirname}/apache.conf"
 echo "$virtusl_host" >> "${site_enabled}/${2}.conf"
+touch "${dirname}/access.log"
+touch "${dirname}/error.log"
 sudo chmod 777  "${dirname}/apache.conf"
+sudo chmod 777  "${dirname}/access.log"
+sudo chmod 777  "${dirname}/error.log"
 fi
 
 sudo chmod 755 ${site_enabled}/${2}.conf

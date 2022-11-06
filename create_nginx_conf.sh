@@ -30,9 +30,10 @@ virtusl_host=$(cat << EOF
 server {
     listen 80;
     listen [::]:80;
-
+    access_log   $dirname/access.log;
+    error_log    $dirname/error.log;
     server_name ${2};
-
+    large_client_header_buffers 4 16k;
     root $dirname;
     index index.html index.php;
 
@@ -47,7 +48,11 @@ EOF
 # sudo rm -f "${site_enabled}/${2}.conf"
 echo "$virtusl_host" > "${dirname}/nginx.conf"
 echo "$virtusl_host" >> "${site_enabled}/${2}.conf"
+touch "${dirname}/access.log"
+touch "${dirname}/error.log"
 sudo chmod 777  "${dirname}/nginx.conf"
+sudo chmod 777  "${dirname}/access.log"
+sudo chmod 777  "${dirname}/error.log"
 fi
 
 sudo chmod 755 ${site_enabled}/${2}.conf
