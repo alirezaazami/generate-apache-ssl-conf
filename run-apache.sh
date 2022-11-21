@@ -7,6 +7,8 @@ ssl_dir=/etc/pki/tls
 openssl_config=''
 
 sudo a2enmod rewrite
+sudo a2enmod fcgid
+sudo a2enmod proxy_fcgi //fixme this or up line
 sudo a2enmod ssl
 sudo service apache2 stop
 
