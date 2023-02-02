@@ -2,7 +2,7 @@
 
 
 start_line=$(grep -n '#startweb' /etc/hosts | cut -d: -f 1)
-if [ $start_line == '' ];then
+if [[ $start_line == '' ]] ; then
 	sudo echo "#startweb" >> /etc/hosts
 	sudo echo ${1} >> /etc/hosts
 	sudo echo "#endweb" >> /etc/hosts

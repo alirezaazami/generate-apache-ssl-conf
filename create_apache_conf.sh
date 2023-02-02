@@ -35,6 +35,9 @@ virtusl_host=$(cat << EOF
         AllowOverride All
         Require all granted
     </Directory>
+    <FilesMatch "\.php$"> # Apache 2.4.10+ can proxy to unix socket
+            SetHandler "proxy:unix:/var/run/php/php7.4-fpm.sock|fcgi://localhost/"
+     </FilesMatch>
      ErrorLog $dirname/error.log
      CustomLog $dirname/access.log combined
 </VirtualHost>
@@ -47,12 +50,14 @@ virtusl_host=$(cat << EOF
         AllowOverride All
         Require all granted
     </Directory>
+    <FilesMatch "\.php$"> # Apache 2.4.10+ can proxy to unix socket
+            SetHandler "proxy:unix:/var/run/php/php7.4-fpm.sock|fcgi://localhost/"
+     </FilesMatch>
      ErrorLog $dirname/error.log
      CustomLog $dirname/access.log combined
     SSLEngine on
     SSLCertificateFile      ${ssl_dir}/certs/localhost.crt
     SSLCertificateKeyFile   ${ssl_dir}/private/localhost.key
-
 </VirtualHost>
 
 EOF
