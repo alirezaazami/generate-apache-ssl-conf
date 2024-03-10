@@ -18,21 +18,21 @@ i=3
 website=''
 hosts="127.0.0.1     "
 
-sudo /bin/bash ${pwd}/create_apache_conf.sh ${html} localhost ${ssl_dir}
-sudo /bin/bash ${pwd}/create_apache_conf.sh ${html} 127.0.0.1 ${ssl_dir}
+sudo /bin/bash ${pwd}/inc/create_apache_conf.sh ${html} localhost ${ssl_dir}
+sudo /bin/bash ${pwd}/inc/create_apache_conf.sh ${html} 127.0.0.1 ${ssl_dir}
 
 for j in /etc/apache2/sites-enabled/*.conf; do
 	sudo rm -f $j;
 done
 
-sudo /bin/bash ${pwd}/create_apache_conf.sh ${html} localhost ${ssl_dir}
+sudo /bin/bash ${pwd}/inc/create_apache_conf.sh ${html} localhost ${ssl_dir}
 for d in */ ; do
 if [[ $d == *"."* ]] && [[ $d != "-"* ]]; then
 
 website=$(echo  ${d} | sed 's/.$//')
 
 #regenerate httpd host config
-sudo /bin/bash ${pwd}/create_apache_conf.sh ${html} ${website} ${ssl_dir}
+sudo /bin/bash ${pwd}/inc/create_apache_conf.sh ${html} ${website} ${ssl_dir}
 
 
 #create hosts string in loop
@@ -53,13 +53,13 @@ sudo rm -f "/etc/apache2/sites-enabled/.conf"
 
 
 #regenerate new openssl certificate
-sudo /bin/bash ${pwd}/create_certificate.sh "${openssl_config}" "${html}" "${ssl_dir}"
+sudo /bin/bash ${pwd}/inc/create_certificate.sh "${openssl_config}" "${html}" "${ssl_dir}"
 #end
 
 
 
 #replace host file content
-sudo /bin/bash ${pwd}/create_new_hosts.sh "${hosts}"
+sudo /bin/bash ${pwd}/inc/create_new_hosts.sh "${hosts}"
 #end
 
 sudo systemctl restart apache2 php8.1-fpm

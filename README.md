@@ -3,4 +3,6 @@ this script is for linux to generate apache config and generate local certificat
 only set execute permission to all sh files
 then open all file and view directory location (example: html=/var/www/html)
 if need to chagne this directory locations, do it
-then run run.sh
+then 
+run run-apache.sh for apache
+run run-nginx.sh for nginx

@@ -28,8 +28,8 @@ else
 
 virtusl_host=$(cat << EOF
 server {
-    listen 80;
-    listen [::]:80;
+    listen 8000;
+    listen [::]:8000;
     access_log   $dirname/access.log;
     error_log    $dirname/error.log;
     server_name ${2};
