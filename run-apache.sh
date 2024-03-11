@@ -10,6 +10,8 @@ sudo a2enmod rewrite
 sudo a2enmod fcgid
 sudo a2enmod proxy_fcgi //fixme this or up line
 sudo a2enmod ssl
+sudo a2enmod proxy
+sudo a2enmod proxy_http
 sudo service apache2 stop
 
 cd ${html}
