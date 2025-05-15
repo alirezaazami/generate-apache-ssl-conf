@@ -25,6 +25,7 @@ xdebug.mode=debug,develop;
 #xdebug.start_with_request = trigger;
 xdebug.start_with_request=yes
 xdebug.log_level = 0
+xdebug.log=/var/www/html/xdebug_error.log
 xdebug.output_dir=/var/www/html/" > "$xdebug_ini"
                     echo "Updated $xdebug_ini"
                 else

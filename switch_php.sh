@@ -81,6 +81,7 @@ echo "zend_extension=xdebug.so
 xdebug.mode=debug,develop
 xdebug.start_with_request=yes
 xdebug.log_level=0
+xdebug.log=/var/www/html/xdebug_error.log
 xdebug.output_dir=/var/www/html/
 xdebug.client_port=9003" | sudo tee /etc/php/${php#php}/mods-available/xdebug.ini
 

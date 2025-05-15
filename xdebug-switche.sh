@@ -70,11 +70,11 @@ check_webserver() {
 # Toggle Xdebug
 if grep -q "^zend_extension=xdebug.so" "$XDEBUG_CONF"; then
     echo -e "${YELLOW}Disabling Xdebug for PHP $PHP_VERSION...${NC}"
-    sudo sed -i 's/^zend_extension=xdebug.so/;zend_extension=xdebug.so/' "$XDEBUG_CONF"
+    sudo sed -i 's/^zend_extension=xdebug.so/#zend_extension=xdebug.so/' "$XDEBUG_CONF"
     echo -e "${GREEN}Xdebug disabled${NC}"
-elif grep -q "^;zend_extension=xdebug.so" "$XDEBUG_CONF"; then
+elif grep -q "^#zend_extension=xdebug.so" "$XDEBUG_CONF"; then
     echo -e "${YELLOW}Enabling Xdebug for PHP $PHP_VERSION...${NC}"
-    sudo sed -i 's/^;zend_extension=xdebug.so/zend_extension=xdebug.so/' "$XDEBUG_CONF"
+    sudo sed -i 's/^#zend_extension=xdebug.so/zend_extension=xdebug.so/' "$XDEBUG_CONF"
     echo -e "${GREEN}Xdebug enabled${NC}"
 else
     echo -e "${RED}No zend_extension=xdebug.so found in $XDEBUG_CONF${NC}"
@@ -99,9 +99,9 @@ fi
 
 # Verify Xdebug status
 echo -e "${YELLOW}Current Xdebug status:${NC}"
-if php -v | grep -q Xdebug; then
+if php$PHP_VERSION -v | grep -q Xdebug; then
     echo -e "${GREEN}Xdebug is active${NC}"
-    php -v | grep Xdebug
+    php$PHP_VERSION -v | grep Xdebug
 else
     echo -e "${RED}Xdebug is inactive${NC}"
 fi
