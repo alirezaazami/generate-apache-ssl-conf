@@ -11,7 +11,8 @@ set -e
 
 # Check if running as root/sudo
 if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}Please run with sudo${NC}"
+    echo -e "${YELLOW}This script requires sudo privileges. Running with sudo...${NC}"
+    exec sudo "$0" "$@"
     exit 1
 fi
 

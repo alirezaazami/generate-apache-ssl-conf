@@ -9,6 +9,13 @@ NC='\033[0m' # No Color
 # Error handling
 set -e
 
+# Check if running as root/sudo
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${YELLOW}This script requires sudo privileges. Running with sudo...${NC}"
+    exec sudo "$0" "$@"
+    exit 1
+fi
+
 if [ $# -eq 0 ]; then
     echo -e "${RED}Usage: $0 <php_version>${NC}"
     echo -e "${YELLOW}Example: $0 php7.4${NC}"

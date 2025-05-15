@@ -1,5 +1,21 @@
 #!/bin/bash
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Error handling
+set -e
+
+# Check if running as root/sudo
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${YELLOW}This script requires sudo privileges. Running with sudo...${NC}"
+    exec sudo "$0" "$@"
+    exit 1
+fi
+
 # Define the subdirectory path relative to the PHP versions directories
 subdirectory="mods-available"
 
