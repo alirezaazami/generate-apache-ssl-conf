@@ -39,8 +39,11 @@ if [ -d "$php_config_dir" ]; then
                     echo "zend_extension=xdebug.so
 xdebug.mode=debug,develop;
 #xdebug.start_with_request = trigger;
-xdebug.start_with_request=yes
+xdebug.start_with_request= no
 xdebug.log_level = 0
+xdebug.var_display_max_depth = 10
+xdebug.var_display_max_children = 10
+xdebug.var_display_max_data = -1
 xdebug.log=/var/www/html/xdebug_error.log
 xdebug.output_dir=/var/www/html/" > "$xdebug_ini"
                     echo "Updated $xdebug_ini"

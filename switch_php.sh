@@ -18,11 +18,13 @@ fi
 
 if [ $# -eq 0 ]; then
     echo -e "${RED}Usage: $0 <php_version>${NC}"
-    echo -e "${YELLOW}Example: $0 php7.4${NC}"
+    echo -e "${YELLOW}Example: $0 php8.3 or $0 8.3${NC}"
     exit 1
 fi
 
-php=${1}
+# Fix 1: Ensure input always starts with "php" and extract the pure version number
+php="php${1#php}"
+php_version="${1#php}"
 
 # Function to check if a package is installed
 check_package() {
@@ -68,19 +70,40 @@ modules=(
     "${php}-dev"          # For compiling extensions
 )
 
-echo -e "${YELLOW}Installing PHP ${php} and its modules...${NC}"
+echo -e "${YELLOW}Installing ${php} and its modules...${NC}"
 # Check and install missing PHP packages
 for module in "${modules[@]}"; do
     install_package "$module"
 done
 
+# Fix 2: Check for missing configuration files and restore them if needed
+PHP_INI_FILE="/etc/php/${php_version}/fpm/php.ini"
+
+echo -e "${YELLOW}Checking configuration files...${NC}"
+if [ ! -f "$PHP_INI_FILE" ]; then
+    echo -e "${RED}Missing file: $PHP_INI_FILE${NC}"
+    echo -e "${YELLOW}Attempting to restore missing default configuration files...${NC}"
+
+    # Temporarily disable 'set -e' so the script doesn't crash if apt throws a minor warning
+    set +e
+    sudo DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confmiss" install --reinstall -y "${php}-fpm"
+    set -e
+
+    if [ ! -f "$PHP_INI_FILE" ]; then
+        echo -e "${RED}Critical Error: Failed to restore $PHP_INI_FILE.${NC}"
+        echo -e "${RED}Please check your package manager logs.${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}Configuration files restored successfully!${NC}"
+fi
+
 # Configure PHP for development
 echo -e "${YELLOW}Configuring PHP...${NC}"
-sudo cp /etc/php/${php#php}/fpm/php.ini /etc/php/${php#php}/fpm/php.ini.bak
-sudo sed -i 's/memory_limit = .*/memory_limit = 512M/' /etc/php/${php#php}/fpm/php.ini
-sudo sed -i 's/max_execution_time = .*/max_execution_time = 60/' /etc/php/${php#php}/fpm/php.ini
-sudo sed -i 's/post_max_size = .*/post_max_size = 120M/' /etc/php/${php#php}/fpm/php.ini
-sudo sed -i 's/upload_max_filesize = .*/upload_max_filesize = 1024M/' /etc/php/${php#php}/fpm/php.ini
+sudo cp "$PHP_INI_FILE" "${PHP_INI_FILE}.bak"
+sudo sed -i 's/memory_limit = .*/memory_limit = 512M/' "$PHP_INI_FILE"
+sudo sed -i 's/max_execution_time = .*/max_execution_time = 60/' "$PHP_INI_FILE"
+sudo sed -i 's/post_max_size = .*/post_max_size = 120M/' "$PHP_INI_FILE"
+sudo sed -i 's/upload_max_filesize = .*/upload_max_filesize = 1024M/' "$PHP_INI_FILE"
 
 # Configure Xdebug
 echo -e "${YELLOW}Configuring Xdebug...${NC}"
@@ -90,7 +113,7 @@ xdebug.start_with_request=yes
 xdebug.log_level=0
 xdebug.log=/var/www/html/xdebug_error.log
 xdebug.output_dir=/var/www/html/
-xdebug.client_port=9003" | sudo tee /etc/php/${php#php}/mods-available/xdebug.ini
+xdebug.client_port=9003" | sudo tee /etc/php/${php_version}/mods-available/xdebug.ini > /dev/null
 
 # Configure Apache
 echo -e "${YELLOW}Configuring Apache...${NC}"
@@ -103,5 +126,5 @@ sudo a2enconf ${php}-fpm
 echo -e "${YELLOW}Restarting services...${NC}"
 sudo systemctl restart apache2 ${php}-fpm
 
-echo -e "${GREEN}PHP ${php} has been installed and configured successfully!${NC}"
+echo -e "${GREEN}${php} has been installed and configured successfully!${NC}"
 exit 0

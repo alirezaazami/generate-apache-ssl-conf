@@ -19,7 +19,9 @@ fi
 # Define paths
 TMP_DIR="/tmp"
 DOWNLOAD_URL="https://downloads.ioncube.com/loader_downloads/ioncube_loaders_lin_x86-64.tar.gz"
-DOWNLOAD_FILE="${TMP_DIR}/ioncube_loaders_lin_x86-64.tar.gz"
+# The filename we are looking for
+ARCHIVE_NAME="ioncube_loaders_lin_x86-64.tar.gz"
+DOWNLOAD_FILE="${TMP_DIR}/${ARCHIVE_NAME}"
 INSTALL_DIR="/usr/lib/php/ioncube"
 
 echo -e "${YELLOW}Installing IonCube Loaders...${NC}"
@@ -28,17 +30,23 @@ echo -e "${YELLOW}Installing IonCube Loaders...${NC}"
 echo -e "${YELLOW}Stopping Apache service...${NC}"
 sudo systemctl stop apache2
 
-# Clean up any previous download
+# Clean up any previous temporary download
 if [ -f "${DOWNLOAD_FILE}" ]; then
     rm -f "${DOWNLOAD_FILE}"
 fi
 
-# Download the ionCube loaders
-echo -e "${YELLOW}Downloading IonCube loaders...${NC}"
-if ! wget -P "${TMP_DIR}" "${DOWNLOAD_URL}"; then
-    echo -e "${RED}Failed to download IonCube loaders${NC}"
-    sudo systemctl start apache2
-    exit 1
+# Check if file exists in the current directory
+if [ -f "./${ARCHIVE_NAME}" ]; then
+    echo -e "${GREEN}Found ${ARCHIVE_NAME} in current directory. Using local copy...${NC}"
+    cp "./${ARCHIVE_NAME}" "${DOWNLOAD_FILE}"
+else
+    # Download the ionCube loaders if not found locally
+    echo -e "${YELLOW}Downloading IonCube loaders...${NC}"
+    if ! wget -P "${TMP_DIR}" "${DOWNLOAD_URL}"; then
+        echo -e "${RED}Failed to download IonCube loaders${NC}"
+        sudo systemctl start apache2
+        exit 1
+    fi
 fi
 
 # Extract to /usr/lib/php
@@ -92,7 +100,7 @@ for version in $php_versions; do
     done
 done
 
-# Clean up
+# Clean up temporary file
 echo -e "${YELLOW}Cleaning up temporary files...${NC}"
 rm -f "${DOWNLOAD_FILE}"
 
