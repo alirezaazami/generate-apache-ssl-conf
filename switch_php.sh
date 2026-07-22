@@ -68,6 +68,8 @@ modules=(
     "${php}-uploadprogress"
     "${php}-imagick"      # For image manipulation
     "${php}-dev"          # For compiling extensions
+    "${php}-opcache"      # Zend OPcache, loaded on every PHP version currently installed
+    "${php}-igbinary"     # Serializer used by mongodb/redis, loaded on every PHP version currently installed
 )
 
 echo -e "${YELLOW}Installing ${php} and its modules...${NC}"
