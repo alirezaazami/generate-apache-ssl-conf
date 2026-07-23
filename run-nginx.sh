@@ -1,145 +1,126 @@
 #!/bin/bash
+#
+# run-nginx.sh
+#
+# Configures Nginx to serve every project directory under the web root as its own
+# virtual host and updates /etc/hosts. Cross-platform (Linux + macOS) via platform/
+# — see docs/DESIGN.md.
+#
+# A directory becomes a vhost when its name contains a "." and does not start with "-".
+# If a site directory contains its own nginx.conf, that file is used verbatim
+# (per-project override) instead of the generated template.
+#
+# NOTE: matching the historical behaviour, this serves plain HTTP on port 8000
+# (override with NGINX_LISTEN_PORT), so it can coexist with Apache on 80/443.
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Error handling
 set -e
 
-# Check if running as root/sudo
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${YELLOW}This script requires sudo privileges. Running with sudo...${NC}"
-    exec sudo "$0" "$@"
-    exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=platform/detect.sh
+source "${SCRIPT_DIR}/platform/detect.sh"
 
-# Script directory path
-SCRIPT_DIR=$(dirname $(readlink -f $0))
-HTML_DIR=/var/www/html
-SSL_DIR=/etc/pki/tls
-DEFAULT_PHP_VERSION="8.1"
+DEFAULT_PHP_VERSION="${DEFAULT_PHP_VERSION:-8.1}"
+NGINX_LISTEN_PORT="${NGINX_LISTEN_PORT:-8000}"
 
-# Function to check and install required packages
-check_requirements() {
-    local packages=("nginx" "php${DEFAULT_PHP_VERSION}-fpm")
-
-    for package in "${packages[@]}"; do
-        if ! dpkg -l | grep -q "^ii  $package "; then
-            echo -e "${YELLOW}Installing $package...${NC}"
-            sudo apt install -y $package
-        fi
-    done
-}
-
-# Function to check Nginx configuration
-check_nginx_config() {
-    echo -e "${YELLOW}Checking Nginx configuration...${NC}"
-    if ! nginx -t; then
-        echo -e "${RED}Nginx configuration test failed${NC}"
-        exit 1
-    fi
-}
-
-# Function to create Nginx configurations
-create_nginx_config() {
+# Write (or copy) the Nginx server block for one domain.
+nginx_write_vhost() {
     local domain="$1"
-    echo -e "Configuring Nginx for ${GREEN}${domain}${NC}"
-    sudo bash "${SCRIPT_DIR}/inc/create_nginx_conf.sh" "${HTML_DIR}" "${domain}" "${SSL_DIR}"
-}
-
-# Function to update hosts file
-update_hosts_file() {
-    local hosts="$1"
-    echo -e "${YELLOW}Updating hosts file...${NC}"
-    sudo bash "${SCRIPT_DIR}/inc/create_new_hosts.sh" "$hosts"
-}
-
-# Function to setup SSL directories
-setup_ssl() {
-    echo -e "${YELLOW}Setting up SSL directories...${NC}"
-    sudo mkdir -p "${SSL_DIR}/certs" "${SSL_DIR}/private"
-    sudo chmod 700 "${SSL_DIR}/private"
-}
-
-# Main execution
-echo -e "${YELLOW}Starting Nginx configuration...${NC}"
-
-# Check and install requirements
-check_requirements
-
-# Stop Nginx before configuration
-echo -e "${YELLOW}Stopping Nginx service...${NC}"
-sudo systemctl stop nginx
-
-# Setup SSL directories
-setup_ssl
-
-# Change to web root directory
-cd "${HTML_DIR}" || {
-    echo -e "${RED}Failed to change to ${HTML_DIR}${NC}"
-    exit 1
-}
-
-# Initialize variables
-website=""
-hosts="127.0.0.1     "
-
-# Clean up existing configurations
-echo -e "${YELLOW}Cleaning up existing configurations...${NC}"
-sudo rm -f /etc/nginx/sites-enabled/*.conf
-
-# Create default configurations
-echo -e "${YELLOW}Creating default virtual hosts...${NC}"
-create_nginx_config "localhost"
-create_nginx_config "127.0.0.1"
-
-# Process directories for virtual hosts
-echo -e "${YELLOW}Processing virtual hosts...${NC}"
-for dir in */; do
-    if [[ $dir == *"."* ]] && [[ $dir != "-"* ]]; then
-        website="${dir%/}"
-        create_nginx_config "${website}"
-        hosts="${hosts} ${website}"
+    local docroot="${WEB_ROOT}/${domain}"
+    if [ "$domain" = "localhost" ] || [ "$domain" = "127.0.0.1" ]; then
+        docroot="${WEB_ROOT}"
     fi
+    local dest="${NGINX_SITES_DIR}/${domain}.conf"
+    local project_conf="${docroot}/nginx.conf"
+
+    # Per-project override: reuse the site's own nginx.conf if present.
+    if [ -f "$project_conf" ]; then
+        sudo cp "$project_conf" "$dest"
+        log_ok "Using existing nginx.conf for ${domain}"
+        return
+    fi
+
+    local socket
+    socket="$(php_fpm_socket "$DEFAULT_PHP_VERSION")"
+    local vhost
+    vhost="$(cat <<EOF
+server {
+    listen ${NGINX_LISTEN_PORT};
+    listen [::]:${NGINX_LISTEN_PORT};
+    access_log "${docroot}/access.log";
+    error_log "${docroot}/error.log";
+    server_name ${domain};
+    large_client_header_buffers 4 16k;
+    root "${docroot}";
+    index index.html index.php;
+
+    location ~ \.php\$ {
+$(nginx_php_location_extra)
+        fastcgi_pass unix:${socket};
+    }
+}
+EOF
+)"
+    echo "$vhost" | sudo tee "$project_conf" >/dev/null
+    echo "$vhost" | sudo tee "$dest" >/dev/null
+    sudo touch "${docroot}/access.log" "${docroot}/error.log"
+    sudo chmod 666 "${docroot}/access.log" "${docroot}/error.log" 2>/dev/null || true
+    log_ok "Configured nginx vhost for ${domain}"
+}
+
+# --- Main -------------------------------------------------------------------
+require_root "$@"
+
+log_info "Installing requirements..."
+for pkg in "${NGINX_REQUIRE_PKGS[@]}"; do
+    pkg_is_installed "$pkg" || pkg_install "$pkg"
+done
+php_fpm_install "$DEFAULT_PHP_VERSION"
+
+nginx_bootstrap
+
+log_info "Stopping ${NGINX_SERVICE}..."
+svc_stop "$NGINX_SERVICE" || true
+
+[ -d "$WEB_ROOT" ] || { log_error "Web root ${WEB_ROOT} does not exist"; exit 1; }
+cd "$WEB_ROOT"
+
+log_info "Cleaning up existing configurations..."
+sudo rm -f "${NGINX_SITES_DIR}"/*.conf
+
+# Always-present default hosts.
+hosts_line="127.0.0.1"
+nginx_write_vhost localhost
+nginx_write_vhost 127.0.0.1
+
+log_info "Processing virtual hosts..."
+for dir in */; do
+    domain="${dir%/}"
+    case "$domain" in
+        -*)  continue ;;   # skip names starting with "-"
+        *.*) ;;            # has a dot -> treat as a domain
+        *)   continue ;;
+    esac
+    nginx_write_vhost "$domain"
+    hosts_line="${hosts_line} ${domain}"
 done
 
-# Remove any empty configuration
-sudo rm -f "/etc/nginx/sites-enabled/.conf"
+hosts_write_block "$hosts_line"
 
-# Update hosts file
-update_hosts_file "${hosts}"
-
-# Test Nginx configuration
-check_nginx_config
-
-# Start PHP-FPM if not running
-if ! systemctl is-active --quiet "php${DEFAULT_PHP_VERSION}-fpm"; then
-    echo -e "${YELLOW}Starting PHP${DEFAULT_PHP_VERSION}-FPM...${NC}"
-    sudo systemctl start "php${DEFAULT_PHP_VERSION}-fpm"
+log_info "Testing nginx configuration..."
+if ! sudo nginx -t; then
+    log_error "Nginx configuration test failed"
+    exit 1
 fi
 
-# Restart Nginx
-echo -e "${YELLOW}Restarting Nginx...${NC}"
-sudo systemctl restart nginx
+# Ensure the default PHP-FPM is running, then restart Nginx.
+fpm="$(php_fpm_service "$DEFAULT_PHP_VERSION")"
+svc_is_active "$fpm" || svc_start "$fpm"
+log_info "Restarting ${NGINX_SERVICE}..."
+svc_restart "$NGINX_SERVICE"
 
-# Verify services
-echo -e "${YELLOW}Verifying services...${NC}"
-if systemctl is-active --quiet nginx; then
-    echo -e "${GREEN}Nginx is running${NC}"
-else
-    echo -e "${RED}Nginx failed to start${NC}"
-fi
+# Verify.
+if svc_is_active "$NGINX_SERVICE"; then log_ok "Nginx is running"; else log_error "Nginx failed to start"; fi
+if svc_is_active "$fpm";            then log_ok "PHP-FPM is running"; else log_error "PHP-FPM failed to start"; fi
 
-if systemctl is-active --quiet "php${DEFAULT_PHP_VERSION}-fpm"; then
-    echo -e "${GREEN}PHP-FPM is running${NC}"
-else
-    echo -e "${RED}PHP-FPM failed to start${NC}"
-fi
-
-echo -e "${GREEN}Nginx configuration completed!${NC}"
-echo -e "${YELLOW}Virtual hosts configured: ${NC}${hosts}"
-exit 0
-
+log_ok "Nginx configuration completed!"
+log_info "Virtual hosts configured on port ${NGINX_LISTEN_PORT}: ${hosts_line}"

@@ -1,4 +1,15 @@
 /.php.sh.swp
 .idea
 .continue
-.ioncube_loaders_lin_x86-64.tar.gz
+
+# Large vendor loader tarball — downloaded on demand by install_ioncube.sh
+ioncube_loaders_lin_x86-64.tar.gz
+ioncube_loaders_dar_*.tar.gz
+
+# macOS / editor cruft
+.DS_Store
+
+# Local run/test artifacts
+apache-run.log
+nginx-run.log
+*-install.log

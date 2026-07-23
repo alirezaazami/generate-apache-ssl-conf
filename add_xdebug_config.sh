@@ -1,60 +1,45 @@
 #!/bin/bash
+#
+# add_xdebug_config.sh
+#
+# Normalizes the Xdebug configuration across *every* installed PHP version by
+# overwriting each version's existing Xdebug ini with the same canonical config.
+# (Unlike switch_php.sh, which only touches one version.) Cross-platform via
+# platform/ — see docs/DESIGN.md.
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Error handling
 set -e
 
-# Check if running as root/sudo
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${YELLOW}This script requires sudo privileges. Running with sudo...${NC}"
-    exec sudo "$0" "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=platform/detect.sh
+source "${SCRIPT_DIR}/platform/detect.sh"
+
+require_root "$@"
+
+log_info "Normalizing Xdebug config across all installed PHP versions..."
+
+updated=0
+for ver in $(php_installed_versions); do
+    xdebug_ini="$(php_xdebug_ini "$ver")"
+    # Only touch versions that already have an Xdebug ini (i.e. Xdebug is set up).
+    if [ ! -f "$xdebug_ini" ]; then
+        log_info "PHP ${ver}: no Xdebug ini (${xdebug_ini}) — skipping"
+        continue
+    fi
+    printf '%s\n' \
+        "zend_extension=xdebug.so" \
+        "xdebug.mode=debug,develop" \
+        "xdebug.start_with_request=no" \
+        "xdebug.log_level=0" \
+        "xdebug.var_display_max_depth=10" \
+        "xdebug.var_display_max_children=10" \
+        "xdebug.var_display_max_data=-1" \
+        "xdebug.log=${WEB_ROOT}/xdebug_error.log" \
+        "xdebug.output_dir=${WEB_ROOT}/" | sudo tee "$xdebug_ini" >/dev/null
+    log_ok "Updated ${xdebug_ini}"
+    updated=1
+done
+
+if [ "$updated" != "1" ]; then
+    log_error "No PHP versions with an Xdebug ini were found."
     exit 1
-fi
-
-# Define the subdirectory path relative to the PHP versions directories
-subdirectory="mods-available"
-
-# Path to the PHP configurations directory
-php_config_dir="/etc/php"
-
-# Check if the PHP configuration directory exists
-if [ -d "$php_config_dir" ]; then
-    # List all directories in /etc/php/
-    for version_dir in $php_config_dir/*; do
-        # Check if it's a directory
-        if [ -d "$version_dir" ]; then
-            # Construct the path to the specific subdirectory (e.g., mods-available)
-            target_dir="$version_dir/$subdirectory"
-            # Check if the target directory exists
-            if [ -d "$target_dir" ]; then
-                # Check for the existence of the xdebug.ini file
-                xdebug_ini="$target_dir/xdebug.ini"
-                if [ -f "$xdebug_ini" ]; then
-                    # Replace the file's content
-                    echo "zend_extension=xdebug.so
-xdebug.mode=debug,develop;
-#xdebug.start_with_request = trigger;
-xdebug.start_with_request= no
-xdebug.log_level = 0
-xdebug.var_display_max_depth = 10
-xdebug.var_display_max_children = 10
-xdebug.var_display_max_data = -1
-xdebug.log=/var/www/html/xdebug_error.log
-xdebug.output_dir=/var/www/html/" > "$xdebug_ini"
-                    echo "Updated $xdebug_ini"
-                else
-                    echo "xdebug.ini not found in $target_dir"
-                fi
-            else
-                echo "$target_dir does not exist."
-            fi
-        fi
-    done
-else
-    echo "The specified PHP configuration directory does not exist."
 fi
