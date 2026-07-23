@@ -63,11 +63,16 @@ Once `easy-start.sh` (or `idev-*` via `install_to_path`) has run, these are on P
 ## Adding a project
 
 1. Create a folder under the web root named like a domain, e.g.
-   `~/Sites/myapp.local` (Linux: `/var/www/html/myapp.local`).
+   `~/Sites/myapp.test` (Linux: `/var/www/html/myapp.test`).
    A folder becomes a site when its name **contains a `.`** and **doesn't start
    with `-`**. `localhost` is always served too.
 2. Run `idev-apache` (and/or `idev-nginx`).
-3. Visit `https://myapp.local/` (Apache) or `http://myapp.local:8000/` (Nginx).
+3. Visit `https://myapp.test/` (Apache) or `http://myapp.test:8000/` (Nginx).
+
+> **Use `.test`, not `.local`.** On macOS the `.local` suffix is reserved for
+> Bonjour/mDNS, so every request to a `*.local` name stalls ~5 seconds while the
+> resolver tries multicast DNS before falling back to `/etc/hosts`. `.test` is
+> reserved for exactly this purpose and resolves instantly on both OSes.
 
 ## Multiple PHP versions at once
 

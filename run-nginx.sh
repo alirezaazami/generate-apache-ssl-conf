@@ -19,7 +19,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=platform/detect.sh
 source "${SCRIPT_DIR}/platform/detect.sh"
 
-DEFAULT_PHP_VERSION="${DEFAULT_PHP_VERSION:-8.1}"
+# Defaults to the current default CLI PHP (what idev-php/switch_php last
+# activated); override by exporting DEFAULT_PHP_VERSION. Falls back to 8.3.
+DEFAULT_PHP_VERSION="${DEFAULT_PHP_VERSION:-$(php_default_version)}"
+: "${DEFAULT_PHP_VERSION:=8.3}"
 NGINX_LISTEN_PORT="${NGINX_LISTEN_PORT:-8000}"
 
 # Write (or copy) the Nginx server block for one domain.

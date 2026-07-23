@@ -248,6 +248,13 @@ is listed here with what to check.
 - `nginx_php_location_extra` uses `include fastcgi_params;` — confirm that file exists at
   `$(brew --prefix)/etc/nginx/fastcgi_params`.
 
+### 5.3b Project domains — use `.test`, not `.local`
+On macOS the `.local` suffix is owned by Bonjour/mDNS, so a `*.local` name resolves
+via multicast DNS **before** `/etc/hosts` and every request stalls ~5s (the actual
+Apache/PHP response is a few ms). Name project folders `*.test` instead — reserved
+for this, resolved instantly from `/etc/hosts` on both OSes. The tool treats any
+dotted, non-`-` folder as a domain, so this is purely a naming convention.
+
 ### 5.4 Loaders — `install_ioncube.sh`, `install_sourceguardian.sh`
 **Most uncertain area — Apple Silicon in particular.**
 - **IonCube:** `IONCUBE_URL`/`ioncube_loader_file` assume the Darwin **x86-64** build

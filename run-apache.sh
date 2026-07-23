@@ -16,8 +16,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=platform/detect.sh
 source "${SCRIPT_DIR}/platform/detect.sh"
 
-# PHP version whose FPM socket the generated vhosts proxy to.
-DEFAULT_PHP_VERSION="${DEFAULT_PHP_VERSION:-8.1}"
+# PHP version whose FPM socket the generated vhosts proxy to. Defaults to the
+# current default CLI PHP (what idev-php/switch_php last activated), so you don't
+# have to pass it; override by exporting DEFAULT_PHP_VERSION. Falls back to 8.3
+# if no PHP is installed yet.
+DEFAULT_PHP_VERSION="${DEFAULT_PHP_VERSION:-$(php_default_version)}"
+: "${DEFAULT_PHP_VERSION:=8.3}"
 
 # Write (or copy) the Apache vhost for one domain.
 apache_write_vhost() {

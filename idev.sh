@@ -50,7 +50,7 @@ if [ -d "$WEB_ROOT" ]; then
             *)   continue ;;
         esac
     done
-    [ "$found" -eq 0 ] && echo "    (none yet — add a folder like ${WEB_ROOT}/myapp.local)"
+    [ "$found" -eq 0 ] && echo "    (none yet — add a folder like ${WEB_ROOT}/myapp.test)"
 else
     echo "  Web root ${WEB_ROOT} does not exist yet (run ./easy-start.sh)."
 fi

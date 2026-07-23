@@ -155,8 +155,10 @@ Paths on this machine:
   Commands installed to:    ${BIN_DIR}
 
 Put each project in its own folder under the web root, named like a domain
-(e.g. ${WEB_ROOT}/myapp.local). A folder becomes a site when its name contains
+(e.g. ${WEB_ROOT}/myapp.test). A folder becomes a site when its name contains
 a "." and does not start with "-". "localhost" is always served too.
+Use the ".test" suffix, not ".local": on macOS ".local" is reserved for
+Bonjour/mDNS and every lookup stalls ~5s before falling back to /etc/hosts.
 
 Commands (call from anywhere once installed):
   idev                       Show this guide and current status.
@@ -181,6 +183,16 @@ Per-project PHP version: drop an "apache.conf" (or "nginx.conf") inside a
 project folder pointing its FPM socket at another version; that file is used
 verbatim, so that one site runs a different PHP while the rest use the default.
 EOF
+}
+
+# --- Default PHP version -----------------------------------------------------
+# The dotted version (e.g. "8.3") of the current default CLI `php` — i.e. the
+# one switch_php.sh / idev-php last activated. Used by run-apache/run-nginx so
+# generated vhosts follow the active default without being told each time.
+# Prints nothing if no php is on PATH.
+php_default_version() {
+    command -v php >/dev/null 2>&1 || return 0
+    php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null
 }
 
 # --- Portable download ------------------------------------------------------
