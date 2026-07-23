@@ -23,6 +23,7 @@ export BREW_PREFIX
 # --- Variables --------------------------------------------------------------
 WEB_ROOT="${WEB_ROOT:-$HOME/Sites}"
 SSL_DIR="${SSL_DIR:-${BREW_PREFIX}/etc/ssl}"
+BIN_DIR="${BIN_DIR:-${BREW_PREFIX}/bin}"
 APACHE_SERVICE="httpd"
 APACHE_SITES_DIR="${BREW_PREFIX}/etc/httpd/sites-enabled"
 APACHE_CONF="${BREW_PREFIX}/etc/httpd/httpd.conf"
@@ -59,6 +60,16 @@ _macos_service_needs_root() {
         httpd|nginx) return 0 ;;
         *)           return 1 ;;
     esac
+}
+
+# Create the web root if it does not exist. On macOS it lives under $HOME
+# ($HOME/Sites) and is owned by the user, so no sudo is needed; Apache/Nginx
+# workers run as the user (see platform_bootstrap / nginx_bootstrap).
+ensure_web_root() {
+    [ -d "$WEB_ROOT" ] && return 0
+    log_info "Creating web root ${WEB_ROOT}..."
+    mkdir -p "$WEB_ROOT"
+    log_ok "Created ${WEB_ROOT}"
 }
 
 platform_bootstrap() {

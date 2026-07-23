@@ -81,7 +81,7 @@ nginx_bootstrap
 log_info "Stopping ${NGINX_SERVICE}..."
 svc_stop "$NGINX_SERVICE" || true
 
-[ -d "$WEB_ROOT" ] || { log_error "Web root ${WEB_ROOT} does not exist"; exit 1; }
+ensure_web_root
 cd "$WEB_ROOT"
 
 log_info "Cleaning up existing configurations..."

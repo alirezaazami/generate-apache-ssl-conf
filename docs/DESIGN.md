@@ -116,6 +116,7 @@ Every `platform/<os>.sh` MUST define these. Adding a third OS = implement this l
 |---|---|---|
 | `PLATFORM` | `linux` | `macos` |
 | `WEB_ROOT` | `/var/www/html` | `${WEB_ROOT:-$HOME/Sites}` |
+| `BIN_DIR` | `/usr/local/bin` | `$(brew --prefix)/bin` |
 | `SSL_DIR` | `/etc/pki/tls` | `$(brew --prefix)/etc/ssl` |
 | `APACHE_SERVICE` | `apache2` | `httpd` |
 | `APACHE_SITES_DIR` | `/etc/apache2/sites-enabled` | `$(brew --prefix)/etc/httpd/sites-enabled` |
@@ -133,6 +134,7 @@ Every `platform/<os>.sh` MUST define these. Adding a third OS = implement this l
 |---|---|
 | `require_root` | Re-exec under sudo if not root (needed on both: port 80, `/etc/hosts`). |
 | `platform_bootstrap` | One-time prep (create sites dir, ensure Apache `Include`/`LoadModule`). |
+| `ensure_web_root` | Create `WEB_ROOT` if missing, with the right owner/permissions (Linux: `sudo` + own to the invoking user; macOS: plain `mkdir` under `$HOME`). |
 | `pkg_is_installed <pkg>` | Package presence check (`dpkg -l` / `brew list`). |
 | `pkg_install <pkg…>` | Install packages (`apt install` / `brew install`). |
 | `svc_is_active <svc>` / `svc_start` / `svc_stop` / `svc_restart` | Service control. |
@@ -154,6 +156,8 @@ Every `platform/<os>.sh` MUST define these. Adding a third OS = implement this l
 | `php_fpm_install <ver>` | Install just the FPM package/formula for a version (lighter than `php_install_version`). |
 | `nginx_php_location_extra` | Emit the fastcgi lines for the nginx PHP location (Debian snippet vs explicit params). |
 | `hosts_write_block <content>` | *(common.sh)* Rewrite the managed `#startweb…#endweb` block in `/etc/hosts` (portable awk). |
+| `install_to_path` | *(common.sh)* Symlink the top-level scripts into `BIN_DIR` as `idev`/`idev-*` (sudo only when `BIN_DIR` isn't user-writable). |
+| `print_usage_guide` | *(common.sh)* Print the command guide with this machine's real `WEB_ROOT`/`BIN_DIR`. Used by `easy-start.sh` and `idev`. |
 | `ini_set <file> <key> <value>` | *(common.sh)* Portable `key = value` edit of an ini file. |
 | `generate_cert <domains>` | *(common.sh)* Issue+trust a local mkcert cert into `$SSL_CERT`/`$SSL_KEY`. |
 

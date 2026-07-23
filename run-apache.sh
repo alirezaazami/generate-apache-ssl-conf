@@ -96,7 +96,7 @@ apache_enable_modules rewrite setenvif ssl fcgid alias actions headers proxy pro
 log_info "Stopping ${APACHE_SERVICE}..."
 svc_stop "$APACHE_SERVICE" || true
 
-[ -d "$WEB_ROOT" ] || { log_error "Web root ${WEB_ROOT} does not exist"; exit 1; }
+ensure_web_root
 cd "$WEB_ROOT"
 
 log_info "Cleaning up existing configurations..."

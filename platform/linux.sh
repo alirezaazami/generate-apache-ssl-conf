@@ -6,6 +6,7 @@
 # --- Variables --------------------------------------------------------------
 WEB_ROOT="${WEB_ROOT:-/var/www/html}"
 SSL_DIR="${SSL_DIR:-/etc/pki/tls}"
+BIN_DIR="${BIN_DIR:-/usr/local/bin}"
 APACHE_SERVICE="apache2"
 APACHE_SITES_DIR="/etc/apache2/sites-enabled"
 NGINX_SERVICE="nginx"
@@ -35,6 +36,19 @@ require_root() {
 
 platform_bootstrap() {
     :  # Debian ships sites-enabled + Apache pre-wired; nothing to prepare.
+}
+
+# Create the web root if it does not exist, owned by the invoking user so they
+# can drop project folders in, and world-readable so the web server (www-data)
+# can traverse it.
+ensure_web_root() {
+    [ -d "$WEB_ROOT" ] && return 0
+    log_info "Creating web root ${WEB_ROOT}..."
+    sudo mkdir -p "$WEB_ROOT"
+    local owner="${SUDO_USER:-$(id -un)}"
+    sudo chown "$owner" "$WEB_ROOT"
+    sudo chmod 755 "$WEB_ROOT"
+    log_ok "Created ${WEB_ROOT} (owner ${owner})"
 }
 
 # Prepare nginx before writing vhosts. On Debian the nginx package already runs
