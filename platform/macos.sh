@@ -244,12 +244,16 @@ php_install_version() {
 
     local pecl="${BREW_PREFIX}/opt/php@${ver}/bin/pecl"
     if [ -x "$pecl" ]; then
+        # Point every PECL build at Homebrew's include dir so headers from brew
+        # libs are found — notably pcre2.h, which mongodb pulls in via
+        # ext/pcre/php_pcre.h and which php-config does not advertise (the build
+        # otherwise dies with "'pcre2.h' file not found").
+        local pecl_env="CPPFLAGS=-I${BREW_PREFIX}/include"
         # PHP 7.x pairs with older extension source (e.g. xdebug 3.1) that predates
         # C23's stricter empty-parameter prototype rule, so it fails to compile with
         # the current Apple clang (defaults to -std=gnu23). Build 7.x exts with an
         # older C standard. Harmless for the newer sources too.
-        local pecl_env=""
-        case "$ver" in 7.*) pecl_env="CFLAGS=-std=gnu17 CXXFLAGS=-std=gnu17" ;; esac
+        case "$ver" in 7.*) pecl_env="$pecl_env CFLAGS=-std=gnu17 CXXFLAGS=-std=gnu17" ;; esac
         local ext spec
         for ext in "${PHP_PECL_EXTENSIONS[@]}"; do
             spec="$(_macos_pecl_spec "$ext" "$ver")"
