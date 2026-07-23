@@ -175,7 +175,13 @@ php_is_installed() { [ -d "${BREW_PREFIX}/etc/php/${1}" ]; }
 php_installed_versions() { ls "${BREW_PREFIX}/etc/php/" 2>/dev/null; }
 
 php_set_default_cli() {
-    brew unlink php >/dev/null 2>&1
+    # Homebrew's PHP formulae are versioned (php@8.3, php@7.4), so `brew unlink
+    # php` is a no-op and leaves the previously-linked version owning bin/php.
+    # Unlink every linked php@* first, then link the target version.
+    local other
+    for other in $(brew list --formula 2>/dev/null | grep -E '^php@'); do
+        brew unlink "$other" >/dev/null 2>&1
+    done
     brew link --overwrite --force "$(_macos_php_formula "$1")"
 }
 
@@ -191,6 +197,41 @@ _macos_php_fpm_use_socket() {
     fi
 }
 
+# Echo the pecl package spec to install <ext> on PHP <ver>, or nothing to skip.
+# Newer PECL releases drop old-PHP support, so pin/skip per version instead of
+# always grabbing latest (which fails to build on EOL runtimes like 7.4).
+_macos_pecl_spec() {
+    local ext="$1" ver="$2"
+    case "$ext" in
+        xdebug)
+            # xdebug 3.2+ dropped PHP 7; 3.1.6 is the last 7.2–8.1 compatible build.
+            case "$ver" in
+                7.*) echo "xdebug-3.1.6" ;;
+                *)   echo "xdebug" ;;
+            esac
+            ;;
+        mongodb)
+            # mongodb 2.x requires PHP 8.1+; skip on older runtimes.
+            case "$ver" in
+                7.*|8.0) echo "" ;;
+                *)       echo "mongodb" ;;
+            esac
+            ;;
+        *) echo "$ext" ;;
+    esac
+}
+
+# True if an xdebug build actually exists for <ver> (may be absent when the pecl
+# build was skipped/failed). Lets callers avoid writing an xdebug ini that would
+# then fail to load. pecl drops builds in lib/php/pecl/<zend-api>/; the api dir
+# name is the basename of the version's compiled extension_dir, and is unique per
+# PHP version (7.4=20190902, 8.3=20230831), so this won't cross-match versions.
+php_xdebug_available() {
+    local ver="$1" api
+    api="$(basename "$("$(php_bin "$ver")" -n -r 'echo ini_get("extension_dir");' 2>/dev/null)")"
+    [ -n "$api" ] && [ -f "${BREW_PREFIX}/lib/php/pecl/${api}/xdebug.so" ]
+}
+
 php_install_version() {
     local ver="$1"
     local formula
@@ -203,12 +244,23 @@ php_install_version() {
 
     local pecl="${BREW_PREFIX}/opt/php@${ver}/bin/pecl"
     if [ -x "$pecl" ]; then
-        local ext
+        # PHP 7.x pairs with older extension source (e.g. xdebug 3.1) that predates
+        # C23's stricter empty-parameter prototype rule, so it fails to compile with
+        # the current Apple clang (defaults to -std=gnu23). Build 7.x exts with an
+        # older C standard. Harmless for the newer sources too.
+        local pecl_env=""
+        case "$ver" in 7.*) pecl_env="CFLAGS=-std=gnu17 CXXFLAGS=-std=gnu17" ;; esac
+        local ext spec
         for ext in "${PHP_PECL_EXTENSIONS[@]}"; do
-            log_info "pecl install ${ext} for php ${ver}..."
+            spec="$(_macos_pecl_spec "$ext" "$ver")"
+            if [ -z "$spec" ]; then
+                log_info "Skipping ${ext} — not supported on PHP ${ver}"
+                continue
+            fi
+            log_info "pecl install ${spec} for php ${ver}..."
             # Several builds (redis/mongodb/...) prompt for optional flags; feed
             # empty lines so they take defaults instead of blocking on stdin.
-            yes '' | "$pecl" install "$ext" || log_error "pecl ${ext} failed for ${ver} (skipping)"
+            yes '' | env $pecl_env "$pecl" install "$spec" || log_error "pecl ${spec} failed for ${ver} (skipping)"
         done
         # pecl's installer appends its own enable lines to the main php.ini. For
         # xdebug that collides with the conf.d file we write via php_xdebug_ini

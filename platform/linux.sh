@@ -104,6 +104,11 @@ php_install_version() {
 # Xdebug ini location (sury auto-loads mods-available/*.ini via conf.d symlinks).
 php_xdebug_ini() { echo "/etc/php/${1}/mods-available/xdebug.ini"; }
 
+# xdebug ships in our standard apt extension set for every version, so it is
+# always available here (the predicate exists for parity with macOS, where old
+# PHP versions may not get an xdebug build).
+php_xdebug_available() { return 0; }
+
 # Restore php.ini if a partial/purged install left it missing (apt-specific).
 php_ensure_config() {
     local ver="$1" ini
