@@ -55,6 +55,7 @@ Once `easy-start.sh` (or `idev-*` via `install_to_path`) has run, these are on P
 | `idev-php <version>` | Install a PHP version + standard extensions and **make it the default CLI PHP** (e.g. `idev-php 8.3`). This is how you switch the default version. |
 | `idev-apache` | (Re)generate Apache vhosts for every project; serve on 80/443 with TLS. |
 | `idev-nginx` | (Re)generate Nginx vhosts; serve on port 8000. |
+| `idev-site <domain> [opts]` | Scaffold **one** project by type (php/wordpress/laravel/node) and activate it. See below. |
 | `idev-xdebug <version>` | Toggle Xdebug on/off for a PHP version. |
 | `idev-ioncube` | Install the IonCube loader for all installed PHP versions. |
 | `idev-sourceguardian` | Install the SourceGuardian loader for all installed versions. |
@@ -74,19 +75,61 @@ Once `easy-start.sh` (or `idev-*` via `install_to_path`) has run, these are on P
 > resolver tries multicast DNS before falling back to `/etc/hosts`. `.test` is
 > reserved for exactly this purpose and resolves instantly on both OSes.
 
+## Scaffolding a project by type — `idev-site`
+
+`idev-site` creates a project and activates it in one step. It makes the folder,
+writes the project's own `apache.conf`/`nginx.conf` for the chosen **type** (with
+the right docroot, PHP version, or proxy target baked in), then reissues the cert,
+updates `/etc/hosts`, and reloads the servers.
+
+```bash
+idev-site blog.test                          # plain PHP, default PHP version
+idev-site shop.test --type wordpress --php 8.1
+idev-site api.test  --type laravel   --php 8.3   # docroot -> public/, front controller
+idev-site app.test  --type node      --port 3000 # reverse-proxy to 127.0.0.1:3000
+```
+
+| Type | docroot | Served by |
+|---|---|---|
+| `php` / `wordpress` | project root | PHP-FPM (permalink fallback to `index.php`) |
+| `laravel` | `<project>/public` | PHP-FPM (Laravel front controller) |
+| `node` | — | reverse proxy to `http://127.0.0.1:<port>` |
+
+Options: `--type`, `--php <version>` (must be installed — `idev-php <v>` first),
+`--port <port>` (node; prompted if omitted), `--server apache|nginx|both`,
+`--dry-run` (print the vhost(s) without writing anything).
+
+## Moving projects between machines (Linux ⇄ macOS)
+
+Each project keeps its own `apache.conf`/`nginx.conf`, so you can copy a project
+folder from one machine to another. On the next `idev-apache`/`idev-nginx`, any
+absolute path in that config that **doesn't exist on the new machine** is rewritten
+to the local equivalent — the docroot moves under the new web root, the TLS cert
+and PHP-FPM socket point at the local ones, and a Debian `include
+snippets/fastcgi-php.conf;` becomes the Homebrew fastcgi params. The PHP version
+encoded in the old socket is preserved when it's installed (else it falls back to
+the default). It's existence-gated, so a config already correct for the machine is
+left byte-for-byte unchanged. Custom nginx configs (reverse proxies, extra rules)
+are preserved; only the parts that don't fit the machine are adapted.
+
 ## Multiple PHP versions at once
 
 The default PHP version (used by all sites) is whatever `idev-php` last activated.
-To pin **one** project to a **different** version:
+To pin **one** project to a **different** version, the easy way is:
 
-1. Install that version too: `idev-php 7.4`.
-2. Drop an `apache.conf` (and/or `nginx.conf`) inside the project folder whose
-   PHP `SetHandler`/`fastcgi_pass` points at that version's FPM socket. When a
-   project has its own `apache.conf`/`nginx.conf`, it is used **verbatim**, so
-   that one site runs a different PHP while the rest use the default.
-3. Re-run `idev-apache`/`idev-nginx`.
+```bash
+idev-php 7.4                          # install the version if you don't have it
+idev-site myapp.test --php 7.4        # scaffold/repin this site to 7.4
+```
 
-FPM sockets live at `$(brew --prefix)/var/run/php@<version>-fpm.sock` on macOS.
+Under the hood a project runs its own PHP version because it has its own
+`apache.conf`/`nginx.conf` whose `SetHandler`/`fastcgi_pass` points at that
+version's FPM socket. `idev-site` writes that file for you; you can also hand-write
+it — a project's own config is honoured over the generated default (with paths
+adapted to the machine, see above).
+
+FPM sockets live at `$(brew --prefix)/var/run/php@<version>-fpm.sock` on macOS and
+`/run/php/php<version>-fpm.sock` on Linux.
 
 ## Switching the default PHP version
 

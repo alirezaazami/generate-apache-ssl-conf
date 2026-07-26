@@ -156,6 +156,8 @@ Every `platform/<os>.sh` MUST define these. Adding a third OS = implement this l
 | `php_fpm_install <ver>` | Install just the FPM package/formula for a version (lighter than `php_install_version`). |
 | `nginx_php_location_extra` | Emit the fastcgi lines for the nginx PHP location (Debian snippet vs explicit params). |
 | `hosts_write_block <content>` | *(common.sh)* Rewrite the managed `#startweb…#endweb` block in `/etc/hosts` (portable awk). |
+| `php_default_version` | *(common.sh)* Dotted version of the current default CLI `php` (what `idev-php` last activated); empty if none. Used so `run-apache`/`run-nginx` follow the active default. |
+| `rewrite_conf_paths <domain> <src> [force_ver]` | *(common.sh)* Adapt a per-project vhost to this machine: rewrite absolute paths that don't exist here (docroot→`$WEB_ROOT`, SSL→`$SSL_CERT`/`$SSL_KEY`, FPM socket→local, Debian fastcgi `include`→`nginx_php_location_extra`). Existence-gated (idempotent). `force_ver` pins the nginx socket to a version regardless. |
 | `install_to_path` | *(common.sh)* Symlink the top-level scripts into `BIN_DIR` as `idev`/`idev-*` (sudo only when `BIN_DIR` isn't user-writable). |
 | `print_usage_guide` | *(common.sh)* Print the command guide with this machine's real `WEB_ROOT`/`BIN_DIR`. Used by `easy-start.sh` and `idev`. |
 | `ini_set <file> <key> <value>` | *(common.sh)* Portable `key = value` edit of an ini file. |

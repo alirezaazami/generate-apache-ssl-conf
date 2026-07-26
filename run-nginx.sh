@@ -35,10 +35,28 @@ nginx_write_vhost() {
     local dest="${NGINX_SITES_DIR}/${domain}.conf"
     local project_conf="${docroot}/nginx.conf"
 
-    # Per-project override: reuse the site's own nginx.conf if present.
+    # Per-project override: reuse the site's own nginx.conf if present, first
+    # adapting any paths that don't exist on this machine (e.g. a config copied
+    # from Linux). Self-healing: the corrected config is written back too.
     if [ -f "$project_conf" ]; then
-        sudo cp "$project_conf" "$dest"
-        log_ok "Using existing nginx.conf for ${domain}"
+        # For a plain PHP site (has fastcgi, not a reverse proxy), pin its PHP
+        # version to the one in the sibling apache.conf — the source of truth —
+        # fixing the version drift in imported nginx configs. Proxy/custom
+        # configs (proxy_pass) are left untouched.
+        local force_ver="" apache_conf="${docroot}/apache.conf"
+        if grep -q 'fastcgi_pass' "$project_conf" && ! grep -q 'proxy_pass' "$project_conf" && [ -f "$apache_conf" ]; then
+            force_ver="$(grep -oE 'php@?[0-9]+\.[0-9]+' "$apache_conf" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+            { [ -n "$force_ver" ] && php_is_installed "$force_ver"; } || force_ver=""
+        fi
+        local rewritten
+        rewritten="$(rewrite_conf_paths "$domain" "$project_conf" "$force_ver")"
+        if [ "$rewritten" != "$(cat "$project_conf")" ]; then
+            printf '%s\n' "$rewritten" | sudo tee "$project_conf" >/dev/null
+            log_ok "Adapted nginx.conf for ${domain}${force_ver:+ (php ${force_ver})}"
+        else
+            log_ok "Using existing nginx.conf for ${domain}"
+        fi
+        printf '%s\n' "$rewritten" | sudo tee "$dest" >/dev/null
         return
     fi
 

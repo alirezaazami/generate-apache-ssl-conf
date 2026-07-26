@@ -45,7 +45,9 @@ to TCP `127.0.0.1:9000`.
 ### Entry points
 
 - Top-level `*.sh` scripts in the repo root are the user-facing entry points, each self-contained and independently runnable. They contain only orchestration and call the platform contract.
-- `inc/*.sh` are the **legacy pre-migration helpers** — now orphaned (nothing sources them) and superseded by contract functions / inline generation. Remove with `git rm -r inc/`.
+- `create-site.sh` (on PATH as `idev-site`) scaffolds **one** project by type (`php`/`wordpress`/`laravel`/`node`), writing its per-project `apache.conf`/`nginx.conf` (docroot, PHP version, or node proxy port baked in) then delegating activation to `run-apache.sh`/`run-nginx.sh`. `--dry-run` prints the vhosts without writing. `easy-start.sh` is the one-shot bring-up (web root + PATH install + PHP 8.3 + vhosts) and is intentionally **not** on PATH.
+- `install_to_path` (`common.sh`) maps each tool script to an `idev-*` launcher in `$BIN_DIR`; add new commands to `TOOL_SCRIPTS` + `tool_command_name` there.
+- The old `inc/*.sh` helpers were removed (commit `efc6be0`); nothing sources them.
 
 ### The vhost generation flow (`run-apache.sh`, `run-nginx.sh`)
 
@@ -54,7 +56,7 @@ Both scripts follow the same pattern:
 2. Install `*_REQUIRE_PKGS`, then `platform_bootstrap` and (Apache) `apache_enable_modules`.
 3. Stop the web server, wipe `${APACHE_SITES_DIR}`/`${NGINX_SITES_DIR}` `/*.conf`.
 4. `cd "$WEB_ROOT"` and treat **every subdirectory whose name contains a `.` and doesn't start with `-`** as a virtual host domain; `localhost` and `127.0.0.1` are always configured too.
-5. For each domain, an **inline** `apache_write_vhost` / `nginx_write_vhost` function writes the vhost into the sites dir. The FPM socket comes from `php_fpm_socket "$DEFAULT_PHP_VERSION"` (Apache serves 80+443 with the mkcert cert; Nginx serves plain HTTP on `NGINX_LISTEN_PORT`, default 8000). If a site dir already contains its own `apache.conf`/`nginx.conf`, that file is copied verbatim (per-project override).
+5. For each domain, an **inline** `apache_write_vhost` / `nginx_write_vhost` function writes the vhost into the sites dir. The FPM socket comes from `php_fpm_socket "$DEFAULT_PHP_VERSION"` (Apache serves 80+443 with the mkcert cert; Nginx serves plain HTTP on `NGINX_LISTEN_PORT`, default 8000). If a site dir already contains its own `apache.conf`/`nginx.conf` (per-project override), it is **adapted, not copied verbatim**: `rewrite_conf_paths` (`common.sh`) rewrites any absolute path that doesn't exist on this machine to its local equivalent (docroot under `$WEB_ROOT`, `$SSL_CERT`/`$SSL_KEY`, the FPM socket with the PHP version parsed from the old socket name, and a Debian `include snippets/fastcgi-php.conf` → `nginx_php_location_extra`) and writes the corrected config back to the project (self-healing, existence-gated so an already-correct config is unchanged). `run-nginx.sh` additionally passes a forced PHP version taken from the site's sibling `apache.conf` for plain PHP sites (has `fastcgi_pass`, no `proxy_pass`), realigning imported nginx configs; reverse-proxy/custom nginx configs are left as-is.
 6. Apache issues a cert via `generate_cert` (`common.sh`, mkcert). Nginx is HTTP-only and issues none.
 7. `hosts_write_block` (`common.sh`, portable awk) rewrites the `#startweb`/`#endweb` block in `/etc/hosts`.
 8. Ensure `php_fpm_service "$DEFAULT_PHP_VERSION"` is running, restart the web server, verify.

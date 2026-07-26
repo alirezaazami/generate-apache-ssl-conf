@@ -83,6 +83,97 @@ generate_cert() {
     sudo chmod 600 "$SSL_KEY" 2>/dev/null || true
 }
 
+# --- Portable per-project vhost paths ---------------------------------------
+# Rewrite absolute paths in a project's apache.conf/nginx.conf that DON'T exist
+# on this machine to their current-machine equivalents, so a config carried over
+# from another host (e.g. Linux -> macOS) works here:
+#   - project paths (DocumentRoot/<Directory>/root/*log) remap onto
+#     $WEB_ROOT/<domain>, preserving the sub-path after the domain (e.g. /public);
+#   - SSL paths become $SSL_CERT / $SSL_KEY;
+#   - the PHP-FPM socket becomes this machine's socket, with the PHP version taken
+#     from the old socket name when it names an installed version, else the default.
+# Every rewrite is gated on "the path is missing here", so a config already valid
+# for this machine passes through byte-for-byte unchanged (idempotent, two-way).
+#
+# A third argument forces the nginx fastcgi socket onto that PHP version (used to
+# realign imported nginx configs to the version in their sibling apache.conf);
+# without it the socket is only touched when its path is missing here. It also
+# swaps a Debian `include snippets/fastcgi-php.conf;` for this platform's fastcgi
+# lines (a no-op on Debian, the Homebrew params on macOS).
+#
+#   rewrite_conf_paths <domain> <src-file> [force_php_version]
+rewrite_conf_paths() {
+    local domain="$1" src="$2" force_ver="$3"
+    local proj="${WEB_ROOT}/${domain}"
+    local defver="${DEFAULT_PHP_VERSION:-$(php_default_version)}"
+    : "${defver:=8.3}"
+
+    # …/<domain>/sub -> $proj/sub ; …/<domain> -> $proj. A path that doesn't
+    # contain the domain is left untouched — we only relocate paths that clearly
+    # belong to THIS project, never guess for unrelated/custom docroots (real
+    # configs sometimes carry an extra vhost with a different path).
+    _rcp_remap_proj() {
+        case "$1" in
+            */"$domain"/*) printf '%s/%s' "$proj" "${1#*/"$domain"/}" ;;
+            */"$domain")   printf '%s' "$proj" ;;
+            *)             printf '%s' "$1" ;;
+        esac
+    }
+    # This machine's FPM socket for the version named in an old socket path.
+    _rcp_remap_sock() {
+        local ver
+        ver="$(printf '%s' "$1" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+        { [ -n "$ver" ] && php_is_installed "$ver"; } || ver="$defver"
+        php_fpm_socket "$ver"
+    }
+
+    local line key path new
+    while IFS= read -r line || [ -n "$line" ]; do
+        key="${line#"${line%%[![:space:]]*}"}"   # drop leading whitespace
+        key="${key%%[[:space:]]*}"               # first token = directive
+        case "$key" in
+            DocumentRoot|'<Directory'|ErrorLog|CustomLog|root|access_log|error_log|SSLCertificateFile|SSLCertificateKeyFile)
+                path="$(printf '%s' "$line" | sed -nE 's/.*"([^"]+)".*/\1/p')"
+                [ -n "$path" ] || path="$(printf '%s' "$line" | grep -oE '/[^ ";]+' | head -1)"
+                if [ -n "$path" ] && [ ! -e "$path" ]; then
+                    case "$key" in
+                        SSLCertificateFile)    new="$SSL_CERT" ;;
+                        SSLCertificateKeyFile) new="$SSL_KEY" ;;
+                        *)                     new="$(_rcp_remap_proj "$path")" ;;
+                    esac
+                    # No inner quotes: they would be injected literally here. Safe
+                    # because config paths contain no whitespace or glob chars.
+                    line="${line//$path/$new}"
+                fi
+                ;;
+            SetHandler)   # Apache: "proxy:unix:<sock>|fcgi://localhost/"
+                path="$(printf '%s' "$line" | sed -nE 's/.*proxy:unix:([^|"]+).*/\1/p')"
+                if [ -n "$path" ] && [ ! -S "$path" ] && [ ! -d "$(dirname "$path")" ]; then
+                    new="$(_rcp_remap_sock "$path")"; line="${line//$path/$new}"
+                fi
+                ;;
+            fastcgi_pass) # nginx: unix:<sock>;
+                path="$(printf '%s' "$line" | sed -nE 's/.*unix:([^;]+);.*/\1/p')"
+                if [ -n "$path" ]; then
+                    if [ -n "$force_ver" ]; then
+                        new="$(php_fpm_socket "$force_ver")"
+                        [ "$new" != "$path" ] && line="${line//$path/$new}"
+                    elif [ ! -S "$path" ] && [ ! -d "$(dirname "$path")" ]; then
+                        new="$(_rcp_remap_sock "$path")"; line="${line//$path/$new}"
+                    fi
+                fi
+                ;;
+            include)      # nginx: a Debian php snippet that Homebrew lacks
+                case "$line" in
+                    *snippets/fastcgi-php.conf*) nginx_php_location_extra; continue ;;
+                esac
+                ;;
+        esac
+        printf '%s\n' "$line"
+    done < "$src"
+    unset -f _rcp_remap_proj _rcp_remap_sock
+}
+
 # --- Install the tools onto PATH --------------------------------------------
 # User-facing scripts to expose on PATH, and the `idev-` command each maps to.
 # easy-start.sh is intentionally NOT here — it is run once from the repo.
@@ -91,6 +182,7 @@ TOOL_SCRIPTS=(
     switch_php.sh
     run-apache.sh
     run-nginx.sh
+    create-site.sh
     xdebug-switche.sh
     install_ioncube.sh
     install_sourceguardian.sh
@@ -104,6 +196,7 @@ tool_command_name() {
         switch_php.sh)             echo "idev-php" ;;
         run-apache.sh)             echo "idev-apache" ;;
         run-nginx.sh)              echo "idev-nginx" ;;
+        create-site.sh)            echo "idev-site" ;;
         xdebug-switche.sh)         echo "idev-xdebug" ;;
         install_ioncube.sh)        echo "idev-ioncube" ;;
         install_sourceguardian.sh) echo "idev-sourceguardian" ;;
@@ -168,6 +261,12 @@ Commands (call from anywhere once installed):
   idev-apache                (Re)generate Apache vhosts for every project and
                              serve them on 80/443 with a local TLS cert.
   idev-nginx                 (Re)generate Nginx vhosts and serve on port 8000.
+  idev-site <domain> [opts]  Scaffold + activate ONE site by type, then reload.
+                             --type php|wordpress|laravel|node
+                             --php <version>   (php/wordpress/laravel)
+                             --port <port>     (node reverse-proxy target)
+                             e.g. idev-site api.test --type laravel --php 8.3
+                                  idev-site app.test --type node --port 3000
   idev-xdebug <version>      Toggle Xdebug on/off for a PHP version.
   idev-ioncube               Install the IonCube loader for all PHP versions.
   idev-sourceguardian        Install the SourceGuardian loader for all versions.
@@ -176,12 +275,16 @@ Commands (call from anywhere once installed):
 Typical order:
   1. ./easy-start.sh         One-shot: sets everything up + PHP 8.3 (Xdebug off).
   2. idev-php <version>      Add another PHP version whenever you need one.
-  3. Drop a project folder in ${WEB_ROOT}, then run idev-apache (or idev-nginx).
+  3. idev-site <domain> ...  Scaffold a project (php/wordpress/laravel/node) and
+                             serve it — or just drop a folder in ${WEB_ROOT} and
+                             run idev-apache / idev-nginx.
   4. idev-xdebug <version>   Turn Xdebug on when you need to debug.
 
-Per-project PHP version: drop an "apache.conf" (or "nginx.conf") inside a
-project folder pointing its FPM socket at another version; that file is used
-verbatim, so that one site runs a different PHP while the rest use the default.
+Per-project type / PHP version: idev-site writes an "apache.conf" (and
+"nginx.conf") inside the project folder — docroot, PHP version (or node proxy
+port) baked in. run-apache / run-nginx copy that file verbatim, so that one site
+keeps its type and PHP while the rest use the default. You can also hand-write
+those files.
 EOF
 }
 

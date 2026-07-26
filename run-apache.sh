@@ -33,10 +33,20 @@ apache_write_vhost() {
     local dest="${APACHE_SITES_DIR}/${domain}.conf"
     local project_conf="${docroot}/apache.conf"
 
-    # Per-project override: reuse the site's own apache.conf if present.
+    # Per-project override: reuse the site's own apache.conf if present, first
+    # adapting any paths that don't exist on this machine (e.g. a config copied
+    # from Linux). Self-healing: the corrected config is written back to the
+    # project too, so it stays portable.
     if [ -f "$project_conf" ]; then
-        sudo cp "$project_conf" "$dest"
-        log_ok "Using existing apache.conf for ${domain}"
+        local rewritten
+        rewritten="$(rewrite_conf_paths "$domain" "$project_conf")"
+        if [ "$rewritten" != "$(cat "$project_conf")" ]; then
+            printf '%s\n' "$rewritten" | sudo tee "$project_conf" >/dev/null
+            log_ok "Adapted apache.conf paths for ${domain} to this machine"
+        else
+            log_ok "Using existing apache.conf for ${domain}"
+        fi
+        printf '%s\n' "$rewritten" | sudo tee "$dest" >/dev/null
         return
     fi
 
