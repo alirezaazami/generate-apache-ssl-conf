@@ -230,10 +230,43 @@ install_to_path() {
         $sudo_cmd chmod +x "$target"
         log_ok "installed ${name}  ->  ${REPO_ROOT}/${script}"
     done
+    ensure_bin_on_path
+}
+
+# Make sure $BIN_DIR is on PATH for future shells. Normally it already is (both
+# BIN_DIRs are standard locations), so this is a no-op. If it isn't, append an
+# `export PATH` line to the invoking user's shell profile — guarded by a marker
+# so re-runs don't duplicate it — instead of leaving the user a manual step.
+# Targets the real user's profile even when the script re-execs as root on Linux.
+ensure_bin_on_path() {
     case ":${PATH}:" in
-        *":${BIN_DIR}:"*) : ;;
-        *) log_info "Note: ${BIN_DIR} is not on your PATH — add it to use the idev commands." ;;
+        *":${BIN_DIR}:"*) return 0 ;;   # already reachable — nothing to do
     esac
+
+    local u home shell rc
+    u="${SUDO_USER:-$(id -un)}"
+    if [ "$PLATFORM" = "linux" ] && [ -n "$SUDO_USER" ]; then
+        home="$(eval echo "~${u}")"
+        shell="$(getent passwd "$u" 2>/dev/null | cut -d: -f7)"
+    else
+        home="$HOME"; shell="$SHELL"
+    fi
+    case "$(basename "${shell:-sh}")" in
+        zsh)  rc="${home}/.zshrc" ;;
+        bash) [ "$PLATFORM" = "macos" ] && rc="${home}/.bash_profile" || rc="${home}/.bashrc" ;;
+        *)    rc="${home}/.profile" ;;
+    esac
+
+    local marker="# added by idev install_to_path"
+    if [ -f "$rc" ] && grep -qF "$marker" "$rc"; then
+        return 0
+    fi
+    if printf '\n%s\nexport PATH="%s:$PATH"\n' "$marker" "$BIN_DIR" >> "$rc" 2>/dev/null; then
+        [ "$PLATFORM" = "linux" ] && [ -n "$SUDO_USER" ] && chown "$u" "$rc" 2>/dev/null || true
+        log_ok "Added ${BIN_DIR} to PATH in ${rc} — open a new terminal (or: source ${rc})."
+    else
+        log_info "Add ${BIN_DIR} to your PATH manually: export PATH=\"${BIN_DIR}:\$PATH\""
+    fi
 }
 
 # --- Usage guide ------------------------------------------------------------
