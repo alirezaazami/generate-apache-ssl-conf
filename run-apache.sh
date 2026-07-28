@@ -144,9 +144,9 @@ svc_is_active "$fpm" || svc_start "$fpm"
 log_info "Restarting ${APACHE_SERVICE}..."
 svc_restart "$APACHE_SERVICE"
 
-# Verify.
-if svc_is_active "$APACHE_SERVICE"; then log_ok "Apache is running"; else log_error "Apache failed to start"; fi
-if svc_is_active "$fpm";            then log_ok "PHP-FPM is running"; else log_error "PHP-FPM failed to start"; fi
+# Verify (polling: a service can need a moment after start/restart to report up).
+if svc_wait_active "$APACHE_SERVICE"; then log_ok "Apache is running"; else log_error "Apache failed to start"; fi
+if svc_wait_active "$fpm";            then log_ok "PHP-FPM is running"; else log_error "PHP-FPM (${fpm}) failed to start"; fi
 
 log_ok "Apache configuration completed!"
 log_info "Virtual hosts configured: ${domain_args}"

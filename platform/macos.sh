@@ -133,11 +133,28 @@ pkg_install() {
 }
 
 # --- Services (brew services) -----------------------------------------------
+# A PHP-FPM pool is up when its socket exists and its master process is alive.
+# Ask the OS directly rather than parsing `brew services list`, which is a weak
+# signal here: php@* register as user LaunchAgents while httpd/nginx register as
+# root LaunchDaemons, so each is invisible in the other's listing, and the
+# listing also lags behind `brew services start`. Homebrew retitles the master
+# process on some versions ("php-fpm: master process (...php-fpm.conf)") and
+# leaves the raw argv on others, so match either form.
+_macos_php_fpm_is_running() {
+    local ver="$1"
+    [ -S "$(php_fpm_socket "$ver")" ] || return 1
+    pgrep -f "etc/php/${ver}/php-fpm.conf|opt/php@${ver}/sbin/php-fpm" >/dev/null 2>&1
+}
+
 svc_is_active() {
+    case "$1" in
+        php@*) _macos_php_fpm_is_running "${1#php@}"; return $? ;;
+    esac
+    # BSD grep -E has no reliable \s; use the POSIX class.
     if _macos_service_needs_root "$1"; then
-        sudo brew services list 2>/dev/null | grep -E "^$1\s+started" >/dev/null
+        sudo brew services list 2>/dev/null | grep -E "^$1[[:space:]]+started" >/dev/null
     else
-        brew services list 2>/dev/null | grep -E "^$1\s+started" >/dev/null
+        brew services list 2>/dev/null | grep -E "^$1[[:space:]]+started" >/dev/null
     fi
 }
 
@@ -188,9 +205,14 @@ php_installed_versions() { ls "${BREW_PREFIX}/etc/php/" 2>/dev/null; }
 php_set_default_cli() {
     # Homebrew's PHP formulae are versioned (php@8.3, php@7.4), so `brew unlink
     # php` is a no-op and leaves the previously-linked version owning bin/php.
-    # Unlink every linked php@* first, then link the target version.
+    # Unlink every linked php first, then link the target version. The pattern
+    # must also match the UNVERSIONED `php` formula (currently 8.5): if that one
+    # stays linked it owns bin/php, and php_default_version then reports a
+    # version whose php@<ver> FPM service does not exist — which makes the run
+    # scripts point every vhost at a missing socket and report a false
+    # "PHP-FPM failed to start".
     local other
-    for other in $(brew list --formula 2>/dev/null | grep -E '^php@'); do
+    for other in $(brew list --formula 2>/dev/null | grep -E '^php(@|$)'); do
         brew unlink "$other" >/dev/null 2>&1
     done
     brew link --overwrite --force "$(_macos_php_formula "$1")"

@@ -322,6 +322,21 @@ EOF
 }
 
 # --- Default PHP version -----------------------------------------------------
+# --- Service helpers --------------------------------------------------------
+# Wait for a service to report active. Both `brew services start` and
+# `systemctl start` return before the job is fully up, so checking immediately
+# after starting can report a false negative. Polls svc_is_active (provided by
+# the platform file) up to $2 times, half a second apart.
+svc_wait_active() {
+    local svc="$1" tries="${2:-10}"
+    while [ "$tries" -gt 0 ]; do
+        if svc_is_active "$svc"; then return 0; fi
+        tries=$((tries - 1))
+        sleep 0.5
+    done
+    return 1
+}
+
 # The dotted version (e.g. "8.3") of the current default CLI `php` — i.e. the
 # one switch_php.sh / idev-php last activated. Used by run-apache/run-nginx so
 # generated vhosts follow the active default without being told each time.

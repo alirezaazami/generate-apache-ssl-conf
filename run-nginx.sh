@@ -139,9 +139,9 @@ svc_is_active "$fpm" || svc_start "$fpm"
 log_info "Restarting ${NGINX_SERVICE}..."
 svc_restart "$NGINX_SERVICE"
 
-# Verify.
-if svc_is_active "$NGINX_SERVICE"; then log_ok "Nginx is running"; else log_error "Nginx failed to start"; fi
-if svc_is_active "$fpm";            then log_ok "PHP-FPM is running"; else log_error "PHP-FPM failed to start"; fi
+# Verify (polling: a service can need a moment after start/restart to report up).
+if svc_wait_active "$NGINX_SERVICE"; then log_ok "Nginx is running"; else log_error "Nginx failed to start"; fi
+if svc_wait_active "$fpm";            then log_ok "PHP-FPM is running"; else log_error "PHP-FPM (${fpm}) failed to start"; fi
 
 log_ok "Nginx configuration completed!"
 log_info "Virtual hosts configured on port ${NGINX_LISTEN_PORT}: ${hosts_line}"
