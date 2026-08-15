@@ -50,7 +50,11 @@ if [ -d "$WEB_ROOT" ]; then
             *)   continue ;;
         esac
     done
-    [ "$found" -eq 0 ] && echo "    (none yet — add a folder like ${WEB_ROOT}/myapp.test)"
+    # Plain `if` (not `[ … ] && echo`): as the script's last command, a false
+    # test would make `idev` exit 1 even though nothing went wrong.
+    if [ "$found" -eq 0 ]; then
+        echo "    (none yet — add a folder like ${WEB_ROOT}/myapp.test)"
+    fi
 else
     echo "  Web root ${WEB_ROOT} does not exist yet (run ./easy-start.sh)."
 fi

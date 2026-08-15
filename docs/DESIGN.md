@@ -238,8 +238,10 @@ is listed here with what to check.
   and the `IncludeOptional …/sites-enabled/*.conf`. Confirm the default `Listen` line still
   reads exactly `Listen 8080` (the sed anchor); adjust if Homebrew changed it.
 - **`apache_enable_modules`** uncomments `LoadModule` lines. Confirm `mod_ssl`, `mod_proxy`,
-  `mod_proxy_fcgi` exist in Homebrew httpd (they should); `mod_fcgid` is absent and simply
-  no-ops (we proxy via `proxy_fcgi`).
+  `mod_proxy_fcgi` exist in Homebrew httpd (they should). We proxy PHP via `proxy_fcgi`
+  (`SetHandler "proxy:unix:…|fcgi://"`); `mod_fcgid` is a different, unused module and is
+  deliberately not enabled — on Debian it also needs a package (`libapache2-mod-fcgid`)
+  that apache2 does not pull in, so enabling it would abort `run-apache.sh` under `set -e`.
 - Apache on port 80 → `sudo brew services start httpd` runs it as root. Confirm it binds 80.
 - `generate_cert` runs `mkcert` as your user (needs `brew install mkcert nss`) and chowns
   `$SSL_DIR` to you. Confirm the cert lands in `$(brew --prefix)/etc/ssl/...`.

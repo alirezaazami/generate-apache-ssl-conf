@@ -137,7 +137,7 @@ php_ensure_config() {
 # Enable the Apache modules + PHP handler/conf for this version.
 php_wire_into_apache() {
     local ver="$1"
-    apache_enable_modules proxy_fcgi setenvif actions fcgid alias rewrite
+    apache_enable_modules proxy_fcgi setenvif actions alias rewrite
     sudo a2enmod "php${ver}" 2>/dev/null || true
     sudo a2enconf "php${ver}-fpm" 2>/dev/null || true
 }
