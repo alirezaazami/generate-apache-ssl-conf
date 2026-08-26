@@ -6,7 +6,6 @@
 # --- Variables --------------------------------------------------------------
 WEB_ROOT="${WEB_ROOT:-/var/www/html}"
 SSL_DIR="${SSL_DIR:-/etc/pki/tls}"
-BIN_DIR="${BIN_DIR:-/usr/local/bin}"
 APACHE_SERVICE="apache2"
 APACHE_SITES_DIR="/etc/apache2/sites-enabled"
 NGINX_SERVICE="nginx"
@@ -36,25 +35,6 @@ require_root() {
 
 platform_bootstrap() {
     :  # Debian ships sites-enabled + Apache pre-wired; nothing to prepare.
-}
-
-# Create the web root if it does not exist, owned by the invoking user so they
-# can drop project folders in, and world-readable so the web server (www-data)
-# can traverse it.
-ensure_web_root() {
-    [ -d "$WEB_ROOT" ] && return 0
-    log_info "Creating web root ${WEB_ROOT}..."
-    sudo mkdir -p "$WEB_ROOT"
-    local owner="${SUDO_USER:-$(id -un)}"
-    sudo chown "$owner" "$WEB_ROOT"
-    sudo chmod 755 "$WEB_ROOT"
-    log_ok "Created ${WEB_ROOT} (owner ${owner})"
-}
-
-# Prepare nginx before writing vhosts. On Debian the nginx package already runs
-# workers as www-data and /var/www is readable, so we only ensure the sites dir.
-nginx_bootstrap() {
-    sudo mkdir -p "$NGINX_SITES_DIR"
 }
 
 # --- Packages ---------------------------------------------------------------
@@ -118,11 +98,6 @@ php_install_version() {
 # Xdebug ini location (sury auto-loads mods-available/*.ini via conf.d symlinks).
 php_xdebug_ini() { echo "/etc/php/${1}/mods-available/xdebug.ini"; }
 
-# xdebug ships in our standard apt extension set for every version, so it is
-# always available here (the predicate exists for parity with macOS, where old
-# PHP versions may not get an xdebug build).
-php_xdebug_available() { return 0; }
-
 # Restore php.ini if a partial/purged install left it missing (apt-specific).
 php_ensure_config() {
     local ver="$1" ini
@@ -137,7 +112,7 @@ php_ensure_config() {
 # Enable the Apache modules + PHP handler/conf for this version.
 php_wire_into_apache() {
     local ver="$1"
-    apache_enable_modules proxy_fcgi setenvif actions alias rewrite
+    apache_enable_modules proxy_fcgi setenvif actions fcgid alias rewrite
     sudo a2enmod "php${ver}" 2>/dev/null || true
     sudo a2enconf "php${ver}-fpm" 2>/dev/null || true
 }

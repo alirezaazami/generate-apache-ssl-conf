@@ -19,10 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=platform/detect.sh
 source "${SCRIPT_DIR}/platform/detect.sh"
 
-# Defaults to the current default CLI PHP (what idev-php/switch_php last
-# activated); override by exporting DEFAULT_PHP_VERSION. Falls back to 8.3.
-DEFAULT_PHP_VERSION="${DEFAULT_PHP_VERSION:-$(php_default_version)}"
-: "${DEFAULT_PHP_VERSION:=8.3}"
+DEFAULT_PHP_VERSION="${DEFAULT_PHP_VERSION:-8.1}"
 NGINX_LISTEN_PORT="${NGINX_LISTEN_PORT:-8000}"
 
 # Write (or copy) the Nginx server block for one domain.
@@ -35,28 +32,10 @@ nginx_write_vhost() {
     local dest="${NGINX_SITES_DIR}/${domain}.conf"
     local project_conf="${docroot}/nginx.conf"
 
-    # Per-project override: reuse the site's own nginx.conf if present, first
-    # adapting any paths that don't exist on this machine (e.g. a config copied
-    # from Linux). Self-healing: the corrected config is written back too.
+    # Per-project override: reuse the site's own nginx.conf if present.
     if [ -f "$project_conf" ]; then
-        # For a plain PHP site (has fastcgi, not a reverse proxy), pin its PHP
-        # version to the one in the sibling apache.conf — the source of truth —
-        # fixing the version drift in imported nginx configs. Proxy/custom
-        # configs (proxy_pass) are left untouched.
-        local force_ver="" apache_conf="${docroot}/apache.conf"
-        if grep -q 'fastcgi_pass' "$project_conf" && ! grep -q 'proxy_pass' "$project_conf" && [ -f "$apache_conf" ]; then
-            force_ver="$(grep -oE 'php@?[0-9]+\.[0-9]+' "$apache_conf" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
-            { [ -n "$force_ver" ] && php_is_installed "$force_ver"; } || force_ver=""
-        fi
-        local rewritten
-        rewritten="$(rewrite_conf_paths "$domain" "$project_conf" "$force_ver")"
-        if [ "$rewritten" != "$(cat "$project_conf")" ]; then
-            printf '%s\n' "$rewritten" | sudo tee "$project_conf" >/dev/null
-            log_ok "Adapted nginx.conf for ${domain}${force_ver:+ (php ${force_ver})}"
-        else
-            log_ok "Using existing nginx.conf for ${domain}"
-        fi
-        printf '%s\n' "$rewritten" | sudo tee "$dest" >/dev/null
+        sudo cp "$project_conf" "$dest"
+        log_ok "Using existing nginx.conf for ${domain}"
         return
     fi
 
@@ -97,12 +76,12 @@ for pkg in "${NGINX_REQUIRE_PKGS[@]}"; do
 done
 php_fpm_install "$DEFAULT_PHP_VERSION"
 
-nginx_bootstrap
+sudo mkdir -p "$NGINX_SITES_DIR"
 
 log_info "Stopping ${NGINX_SERVICE}..."
 svc_stop "$NGINX_SERVICE" || true
 
-ensure_web_root
+[ -d "$WEB_ROOT" ] || { log_error "Web root ${WEB_ROOT} does not exist"; exit 1; }
 cd "$WEB_ROOT"
 
 log_info "Cleaning up existing configurations..."
@@ -139,9 +118,9 @@ svc_is_active "$fpm" || svc_start "$fpm"
 log_info "Restarting ${NGINX_SERVICE}..."
 svc_restart "$NGINX_SERVICE"
 
-# Verify (polling: a service can need a moment after start/restart to report up).
-if svc_wait_active "$NGINX_SERVICE"; then log_ok "Nginx is running"; else log_error "Nginx failed to start"; fi
-if svc_wait_active "$fpm";            then log_ok "PHP-FPM is running"; else log_error "PHP-FPM (${fpm}) failed to start"; fi
+# Verify.
+if svc_is_active "$NGINX_SERVICE"; then log_ok "Nginx is running"; else log_error "Nginx failed to start"; fi
+if svc_is_active "$fpm";            then log_ok "PHP-FPM is running"; else log_error "PHP-FPM failed to start"; fi
 
 log_ok "Nginx configuration completed!"
 log_info "Virtual hosts configured on port ${NGINX_LISTEN_PORT}: ${hosts_line}"

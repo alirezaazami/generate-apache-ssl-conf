@@ -17,11 +17,6 @@
 PLATFORM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PLATFORM_DIR
 
-# Repo root (one level up from platform/). Used to resolve the top-level scripts
-# when installing them onto PATH (see install_to_path in common.sh).
-REPO_ROOT="$(dirname "$PLATFORM_DIR")"
-export REPO_ROOT
-
 case "$(uname -s)" in
     Linux)  PLATFORM="linux" ;;
     Darwin) PLATFORM="macos" ;;
