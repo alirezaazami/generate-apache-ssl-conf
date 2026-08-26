@@ -39,18 +39,24 @@ ini_set "$ini" max_execution_time 60
 ini_set "$ini" post_max_size 120M
 ini_set "$ini" upload_max_filesize 1024M
 
-# 3. Configure Xdebug for this version (log/output dirs live under the web root).
-xdebug_ini="$(php_xdebug_ini "$ver")"
-log_info "Configuring Xdebug at ${xdebug_ini}..."
-sudo mkdir -p "$(dirname "$xdebug_ini")"
-printf '%s\n' \
-    "zend_extension=xdebug.so" \
-    "xdebug.mode=debug,develop" \
-    "xdebug.start_with_request=yes" \
-    "xdebug.log_level=0" \
-    "xdebug.log=${WEB_ROOT}/xdebug_error.log" \
-    "xdebug.output_dir=${WEB_ROOT}/" \
-    "xdebug.client_port=9003" | sudo tee "$xdebug_ini" >/dev/null
+# 3. Configure Xdebug for this version — but only if an xdebug build exists.
+#    (On macOS, EOL runtimes like 7.4 may not get a compatible xdebug; writing
+#    the ini anyway would make every php call fail to load a missing .so.)
+if php_xdebug_available "$ver"; then
+    xdebug_ini="$(php_xdebug_ini "$ver")"
+    log_info "Configuring Xdebug at ${xdebug_ini}..."
+    sudo mkdir -p "$(dirname "$xdebug_ini")"
+    printf '%s\n' \
+        "zend_extension=xdebug.so" \
+        "xdebug.mode=debug,develop" \
+        "xdebug.start_with_request=yes" \
+        "xdebug.log_level=0" \
+        "xdebug.log=${WEB_ROOT}/xdebug_error.log" \
+        "xdebug.output_dir=${WEB_ROOT}/" \
+        "xdebug.client_port=9003" | sudo tee "$xdebug_ini" >/dev/null
+else
+    log_info "Xdebug not available for PHP ${ver}; skipping Xdebug config."
+fi
 
 # 4. Make it the default CLI PHP and wire it into Apache.
 php_set_default_cli "$ver"

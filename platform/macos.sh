@@ -23,6 +23,7 @@ export BREW_PREFIX
 # --- Variables --------------------------------------------------------------
 WEB_ROOT="${WEB_ROOT:-$HOME/Sites}"
 SSL_DIR="${SSL_DIR:-${BREW_PREFIX}/etc/ssl}"
+BIN_DIR="${BIN_DIR:-${BREW_PREFIX}/bin}"
 APACHE_SERVICE="httpd"
 APACHE_SITES_DIR="${BREW_PREFIX}/etc/httpd/sites-enabled"
 APACHE_CONF="${BREW_PREFIX}/etc/httpd/httpd.conf"
@@ -61,9 +62,23 @@ _macos_service_needs_root() {
     esac
 }
 
+# Create the web root if it does not exist. On macOS it lives under $HOME
+# ($HOME/Sites) and is owned by the user, so no sudo is needed; Apache/Nginx
+# workers run as the user (see platform_bootstrap / nginx_bootstrap).
+ensure_web_root() {
+    [ -d "$WEB_ROOT" ] && return 0
+    log_info "Creating web root ${WEB_ROOT}..."
+    mkdir -p "$WEB_ROOT"
+    log_ok "Created ${WEB_ROOT}"
+}
+
 platform_bootstrap() {
-    sudo mkdir -p "$APACHE_SITES_DIR"
-    sudo mkdir -p "${SSL_DIR}/certs" "${SSL_DIR}/private" "${BREW_PREFIX}/var/run"
+    # These all live under the Homebrew prefix, which Homebrew requires to be
+    # owned by the user. Creating them with `sudo` makes them root-owned and then
+    # `brew install httpd` cannot pour its config into etc/httpd (Permission
+    # denied). So create them as the normal user — no sudo under the brew prefix.
+    mkdir -p "$APACHE_SITES_DIR"
+    mkdir -p "${SSL_DIR}/certs" "${SSL_DIR}/private" "${BREW_PREFIX}/var/run"
 
     # httpd.conf may not exist until the httpd formula is installed; bail quietly.
     [ -f "$APACHE_CONF" ] || return 0
@@ -75,6 +90,37 @@ platform_bootstrap() {
     # Homebrew httpd listens on 8080 by default; move it to 80/443 to match Linux. VERIFY on macOS
     sudo sed -i '' 's/^Listen 8080$/Listen 80/' "$APACHE_CONF" || true
     grep -q '^Listen 443$' "$APACHE_CONF" || echo 'Listen 443' | sudo tee -a "$APACHE_CONF" >/dev/null
+
+    # Apache workers default to User/Group _www, which cannot traverse the user's
+    # home directory to reach WEB_ROOT ($HOME/Sites) — every request 403s with
+    # "search permissions are missing on a component of the path". Run the workers
+    # as the invoking user (the master still starts as root to bind port 80, then
+    # drops to this user) so they can read the Sites tree. macOS-specific: on Linux
+    # WEB_ROOT is /var/www/html which www-data already owns.
+    sudo sed -i '' "s/^User _www\$/User $(id -un)/"  "$APACHE_CONF" || true
+    sudo sed -i '' "s/^Group _www\$/Group $(id -gn)/" "$APACHE_CONF" || true
+
+    # Serve index.php for directory requests (Homebrew default lists only index.html).
+    sudo sed -i '' 's|^\([[:space:]]*\)DirectoryIndex .*|\1DirectoryIndex index.php index.html|' "$APACHE_CONF" || true
+}
+
+# Prepare Homebrew nginx before writing vhosts. Two macOS-specific fixes:
+#   1. Create the servers dir user-owned (no sudo under the brew prefix), like
+#      the rest of Homebrew.
+#   2. Run workers as the invoking user. Homebrew nginx.conf leaves its `user`
+#      directive commented, so workers default to `nobody`; with the master
+#      started as root via `sudo brew services`, `nobody` cannot traverse the
+#      user's home dir to reach WEB_ROOT ($HOME/Sites) and every request 403s.
+#      Same root cause and fix as Apache's User/Group in platform_bootstrap.
+nginx_bootstrap() {
+    mkdir -p "$NGINX_SITES_DIR"
+    local nginx_conf="${BREW_PREFIX}/etc/nginx/nginx.conf"
+    [ -f "$nginx_conf" ] || return 0
+    if grep -qE '^[[:space:]]*#?[[:space:]]*user[[:space:]]' "$nginx_conf"; then
+        sudo sed -i '' "s|^[[:space:]]*#\{0,1\}[[:space:]]*user[[:space:]].*|user $(id -un) $(id -gn);|" "$nginx_conf" || true
+    else
+        printf 'user %s %s;\n%s\n' "$(id -un)" "$(id -gn)" "$(cat "$nginx_conf")" | sudo tee "$nginx_conf" >/dev/null
+    fi
 }
 
 # --- Packages ---------------------------------------------------------------
@@ -87,11 +133,28 @@ pkg_install() {
 }
 
 # --- Services (brew services) -----------------------------------------------
+# A PHP-FPM pool is up when its socket exists and its master process is alive.
+# Ask the OS directly rather than parsing `brew services list`, which is a weak
+# signal here: php@* register as user LaunchAgents while httpd/nginx register as
+# root LaunchDaemons, so each is invisible in the other's listing, and the
+# listing also lags behind `brew services start`. Homebrew retitles the master
+# process on some versions ("php-fpm: master process (...php-fpm.conf)") and
+# leaves the raw argv on others, so match either form.
+_macos_php_fpm_is_running() {
+    local ver="$1"
+    [ -S "$(php_fpm_socket "$ver")" ] || return 1
+    pgrep -f "etc/php/${ver}/php-fpm.conf|opt/php@${ver}/sbin/php-fpm" >/dev/null 2>&1
+}
+
 svc_is_active() {
+    case "$1" in
+        php@*) _macos_php_fpm_is_running "${1#php@}"; return $? ;;
+    esac
+    # BSD grep -E has no reliable \s; use the POSIX class.
     if _macos_service_needs_root "$1"; then
-        sudo brew services list 2>/dev/null | grep -E "^$1\s+started" >/dev/null
+        sudo brew services list 2>/dev/null | grep -E "^$1[[:space:]]+started" >/dev/null
     else
-        brew services list 2>/dev/null | grep -E "^$1\s+started" >/dev/null
+        brew services list 2>/dev/null | grep -E "^$1[[:space:]]+started" >/dev/null
     fi
 }
 
@@ -140,7 +203,18 @@ php_is_installed() { [ -d "${BREW_PREFIX}/etc/php/${1}" ]; }
 php_installed_versions() { ls "${BREW_PREFIX}/etc/php/" 2>/dev/null; }
 
 php_set_default_cli() {
-    brew unlink php >/dev/null 2>&1
+    # Homebrew's PHP formulae are versioned (php@8.3, php@7.4), so `brew unlink
+    # php` is a no-op and leaves the previously-linked version owning bin/php.
+    # Unlink every linked php first, then link the target version. The pattern
+    # must also match the UNVERSIONED `php` formula (currently 8.5): if that one
+    # stays linked it owns bin/php, and php_default_version then reports a
+    # version whose php@<ver> FPM service does not exist — which makes the run
+    # scripts point every vhost at a missing socket and report a false
+    # "PHP-FPM failed to start".
+    local other
+    for other in $(brew list --formula 2>/dev/null | grep -E '^php(@|$)'); do
+        brew unlink "$other" >/dev/null 2>&1
+    done
     brew link --overwrite --force "$(_macos_php_formula "$1")"
 }
 
@@ -156,6 +230,41 @@ _macos_php_fpm_use_socket() {
     fi
 }
 
+# Echo the pecl package spec to install <ext> on PHP <ver>, or nothing to skip.
+# Newer PECL releases drop old-PHP support, so pin/skip per version instead of
+# always grabbing latest (which fails to build on EOL runtimes like 7.4).
+_macos_pecl_spec() {
+    local ext="$1" ver="$2"
+    case "$ext" in
+        xdebug)
+            # xdebug 3.2+ dropped PHP 7; 3.1.6 is the last 7.2–8.1 compatible build.
+            case "$ver" in
+                7.*) echo "xdebug-3.1.6" ;;
+                *)   echo "xdebug" ;;
+            esac
+            ;;
+        mongodb)
+            # mongodb 2.x requires PHP 8.1+; skip on older runtimes.
+            case "$ver" in
+                7.*|8.0) echo "" ;;
+                *)       echo "mongodb" ;;
+            esac
+            ;;
+        *) echo "$ext" ;;
+    esac
+}
+
+# True if an xdebug build actually exists for <ver> (may be absent when the pecl
+# build was skipped/failed). Lets callers avoid writing an xdebug ini that would
+# then fail to load. pecl drops builds in lib/php/pecl/<zend-api>/; the api dir
+# name is the basename of the version's compiled extension_dir, and is unique per
+# PHP version (7.4=20190902, 8.3=20230831), so this won't cross-match versions.
+php_xdebug_available() {
+    local ver="$1" api
+    api="$(basename "$("$(php_bin "$ver")" -n -r 'echo ini_get("extension_dir");' 2>/dev/null)")"
+    [ -n "$api" ] && [ -f "${BREW_PREFIX}/lib/php/pecl/${api}/xdebug.so" ]
+}
+
 php_install_version() {
     local ver="$1"
     local formula
@@ -168,11 +277,36 @@ php_install_version() {
 
     local pecl="${BREW_PREFIX}/opt/php@${ver}/bin/pecl"
     if [ -x "$pecl" ]; then
-        local ext
+        # Point every PECL build at Homebrew's include dir so headers from brew
+        # libs are found — notably pcre2.h, which mongodb pulls in via
+        # ext/pcre/php_pcre.h and which php-config does not advertise (the build
+        # otherwise dies with "'pcre2.h' file not found").
+        local pecl_env="CPPFLAGS=-I${BREW_PREFIX}/include"
+        # PHP 7.x pairs with older extension source (e.g. xdebug 3.1) that predates
+        # C23's stricter empty-parameter prototype rule, so it fails to compile with
+        # the current Apple clang (defaults to -std=gnu23). Build 7.x exts with an
+        # older C standard. Harmless for the newer sources too.
+        case "$ver" in 7.*) pecl_env="$pecl_env CFLAGS=-std=gnu17 CXXFLAGS=-std=gnu17" ;; esac
+        local ext spec
         for ext in "${PHP_PECL_EXTENSIONS[@]}"; do
-            log_info "pecl install ${ext} for php ${ver}..."
-            "$pecl" install "$ext" || log_error "pecl ${ext} failed for ${ver} (skipping)"  # VERIFY on macOS
+            spec="$(_macos_pecl_spec "$ext" "$ver")"
+            if [ -z "$spec" ]; then
+                log_info "Skipping ${ext} — not supported on PHP ${ver}"
+                continue
+            fi
+            log_info "pecl install ${spec} for php ${ver}..."
+            # Several builds (redis/mongodb/...) prompt for optional flags; feed
+            # empty lines so they take defaults instead of blocking on stdin.
+            yes '' | env $pecl_env "$pecl" install "$spec" || log_error "pecl ${spec} failed for ${ver} (skipping)"
         done
+        # pecl's installer appends its own enable lines to the main php.ini. For
+        # xdebug that collides with the conf.d file we write via php_xdebug_ini
+        # ("Cannot load Xdebug - it was already loaded", and it defeats the
+        # comment-toggle in xdebug-switche.sh). Strip only xdebug's php.ini line;
+        # the other extensions have no conf.d file, so their lines must stay.
+        local main_ini
+        main_ini="$(php_ini "$ver")"
+        [ -f "$main_ini" ] && sudo sed -i '' '/^[[:space:]]*zend_extension[[:space:]]*=.*xdebug/d' "$main_ini"
     else
         log_error "pecl for php ${ver} not found at ${pecl}; skipping PECL extensions."
     fi
@@ -218,14 +352,23 @@ nginx_php_location_extra() {
 # Homebrew keeps a single conf.d per version (no apache2/cli/fpm split).
 php_confd_dirs() { echo "${BREW_PREFIX}/etc/php/${1}/conf.d"; }
 
-# IonCube — Darwin build. On Apple Silicon this may require the arm loader or
-# running PHP under Rosetta; confirm the archive/filename on first run. VERIFY on macOS
-IONCUBE_URL="https://downloads.ioncube.com/loader_downloads/ioncube_loaders_dar_x86-64.tar.gz"  # VERIFY on macOS
-IONCUBE_ARCHIVE="ioncube_loaders_dar_x86-64.tar.gz"
-IONCUBE_INSTALL_DIR="${BREW_PREFIX}/lib/php/ioncube"
-ioncube_loader_file() { echo "${IONCUBE_INSTALL_DIR}/ioncube_loader_dar_${1}.so"; }             # VERIFY on macOS
+# Both vendors ship separate Apple-Silicon (arm64) and Intel (x86-64) Darwin
+# builds; pick by CPU so PHP runs natively (no Rosetta). The extracted loader
+# filenames are identical across both arches — only the archive differs.
+# Verified 2026-07-23 against ioncube.com / sourceguardian.com (arm64 tarballs
+# download + extract to ioncube_loader_dar_<ver>.so / ixed.<ver>.dar).
+case "$(uname -m)" in
+    arm64) _IONCUBE_ARCH="arm64"; _SG_ARCH="macosx-arm64" ;;
+    *)     _IONCUBE_ARCH="x86-64"; _SG_ARCH="macosx" ;;
+esac
 
-# SourceGuardian — macOS build. Confirm tarball name and loader suffix (.dar). VERIFY on macOS
-SOURCEGUARDIAN_URL="https://www.sourceguardian.com/loaders/download/loaders.macosx.tar.gz"       # VERIFY on macOS
+# IonCube — Darwin build (arm64 or x86-64).
+IONCUBE_ARCHIVE="ioncube_loaders_dar_${_IONCUBE_ARCH}.tar.gz"
+IONCUBE_URL="https://downloads.ioncube.com/loader_downloads/${IONCUBE_ARCHIVE}"
+IONCUBE_INSTALL_DIR="${BREW_PREFIX}/lib/php/ioncube"
+ioncube_loader_file() { echo "${IONCUBE_INSTALL_DIR}/ioncube_loader_dar_${1}.so"; }
+
+# SourceGuardian — Darwin build (arm64 or x86-64).
+SOURCEGUARDIAN_URL="https://www.sourceguardian.com/loaders/download/loaders.${_SG_ARCH}.tar.gz"
 SOURCEGUARDIAN_INSTALL_DIR="${BREW_PREFIX}/lib/php/sourceguardian"
-sourceguardian_loader_file() { echo "${SOURCEGUARDIAN_INSTALL_DIR}/ixed.${1}.dar"; }             # VERIFY on macOS
+sourceguardian_loader_file() { echo "${SOURCEGUARDIAN_INSTALL_DIR}/ixed.${1}.dar"; }

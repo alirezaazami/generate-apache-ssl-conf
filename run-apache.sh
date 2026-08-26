@@ -16,8 +16,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=platform/detect.sh
 source "${SCRIPT_DIR}/platform/detect.sh"
 
-# PHP version whose FPM socket the generated vhosts proxy to.
-DEFAULT_PHP_VERSION="${DEFAULT_PHP_VERSION:-8.1}"
+# PHP version whose FPM socket the generated vhosts proxy to. Defaults to the
+# current default CLI PHP (what idev-php/switch_php last activated), so you don't
+# have to pass it; override by exporting DEFAULT_PHP_VERSION. Falls back to 8.3
+# if no PHP is installed yet.
+DEFAULT_PHP_VERSION="${DEFAULT_PHP_VERSION:-$(php_default_version)}"
+: "${DEFAULT_PHP_VERSION:=8.3}"
 
 # Write (or copy) the Apache vhost for one domain.
 apache_write_vhost() {
@@ -29,12 +33,22 @@ apache_write_vhost() {
     local dest="${APACHE_SITES_DIR}/${domain}.conf"
     local project_conf="${docroot}/apache.conf"
 
-    # Per-project override: reuse the site's own apache.conf if present. Does not
-    # apply to localhost/127.0.0.1 — they share $WEB_ROOT as docroot, so they'd
-    # collide on the same project_conf path instead of each getting their own.
+    # Per-project override: reuse the site's own apache.conf if present, first
+    # adapting any paths that don't exist on this machine (e.g. a config copied
+    # from Linux). Self-healing: the corrected config is written back to the
+    # project too, so it stays portable. Does not apply to localhost/127.0.0.1 —
+    # they share $WEB_ROOT as docroot, so they'd collide on the same project_conf
+    # path instead of each getting their own.
     if [ "$domain" != "localhost" ] && [ "$domain" != "127.0.0.1" ] && [ -f "$project_conf" ]; then
-        sudo cp "$project_conf" "$dest"
-        log_ok "Using existing apache.conf for ${domain}"
+        local rewritten
+        rewritten="$(rewrite_conf_paths "$domain" "$project_conf")"
+        if [ "$rewritten" != "$(cat "$project_conf")" ]; then
+            printf '%s\n' "$rewritten" | sudo tee "$project_conf" >/dev/null
+            log_ok "Adapted apache.conf paths for ${domain} to this machine"
+        else
+            log_ok "Using existing apache.conf for ${domain}"
+        fi
+        printf '%s\n' "$rewritten" | sudo tee "$dest" >/dev/null
         return
     fi
 
@@ -95,12 +109,12 @@ done
 platform_bootstrap
 
 log_info "Enabling Apache modules..."
-apache_enable_modules rewrite setenvif ssl fcgid alias actions headers proxy proxy_http proxy_fcgi
+apache_enable_modules rewrite setenvif ssl alias actions headers proxy proxy_http proxy_fcgi
 
 log_info "Stopping ${APACHE_SERVICE}..."
 svc_stop "$APACHE_SERVICE" || true
 
-[ -d "$WEB_ROOT" ] || { log_error "Web root ${WEB_ROOT} does not exist"; exit 1; }
+ensure_web_root
 cd "$WEB_ROOT"
 
 log_info "Cleaning up existing configurations..."
@@ -134,9 +148,9 @@ svc_is_active "$fpm" || svc_start "$fpm"
 log_info "Restarting ${APACHE_SERVICE}..."
 svc_restart "$APACHE_SERVICE"
 
-# Verify.
-if svc_is_active "$APACHE_SERVICE"; then log_ok "Apache is running"; else log_error "Apache failed to start"; fi
-if svc_is_active "$fpm";            then log_ok "PHP-FPM is running"; else log_error "PHP-FPM failed to start"; fi
+# Verify (polling: a service can need a moment after start/restart to report up).
+if svc_wait_active "$APACHE_SERVICE"; then log_ok "Apache is running"; else log_error "Apache failed to start"; fi
+if svc_wait_active "$fpm";            then log_ok "PHP-FPM is running"; else log_error "PHP-FPM (${fpm}) failed to start"; fi
 
 log_ok "Apache configuration completed!"
 log_info "Virtual hosts configured: ${domain_args}"
