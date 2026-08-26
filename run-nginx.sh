@@ -32,8 +32,10 @@ nginx_write_vhost() {
     local dest="${NGINX_SITES_DIR}/${domain}.conf"
     local project_conf="${docroot}/nginx.conf"
 
-    # Per-project override: reuse the site's own nginx.conf if present.
-    if [ -f "$project_conf" ]; then
+    # Per-project override: reuse the site's own nginx.conf if present. Does not
+    # apply to localhost/127.0.0.1 — they share $WEB_ROOT as docroot, so they'd
+    # collide on the same project_conf path instead of each getting their own.
+    if [ "$domain" != "localhost" ] && [ "$domain" != "127.0.0.1" ] && [ -f "$project_conf" ]; then
         sudo cp "$project_conf" "$dest"
         log_ok "Using existing nginx.conf for ${domain}"
         return
@@ -60,7 +62,9 @@ $(nginx_php_location_extra)
 }
 EOF
 )"
-    echo "$vhost" | sudo tee "$project_conf" >/dev/null
+    if [ "$domain" != "localhost" ] && [ "$domain" != "127.0.0.1" ]; then
+        echo "$vhost" | sudo tee "$project_conf" >/dev/null
+    fi
     echo "$vhost" | sudo tee "$dest" >/dev/null
     sudo touch "${docroot}/access.log" "${docroot}/error.log"
     sudo chmod 666 "${docroot}/access.log" "${docroot}/error.log" 2>/dev/null || true
