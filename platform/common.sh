@@ -132,13 +132,13 @@ rewrite_conf_paths() {
         key="${line#"${line%%[![:space:]]*}"}"   # drop leading whitespace
         key="${key%%[[:space:]]*}"               # first token = directive
         case "$key" in
-            DocumentRoot|'<Directory'|ErrorLog|CustomLog|root|access_log|error_log|SSLCertificateFile|SSLCertificateKeyFile)
+            DocumentRoot|'<Directory'|ErrorLog|CustomLog|root|access_log|error_log|SSLCertificateFile|SSLCertificateKeyFile|ssl_certificate|ssl_certificate_key)
                 path="$(printf '%s' "$line" | sed -nE 's/.*"([^"]+)".*/\1/p')"
                 [ -n "$path" ] || path="$(printf '%s' "$line" | grep -oE '/[^ ";]+' | head -1)"
                 if [ -n "$path" ] && [ ! -e "$path" ]; then
                     case "$key" in
-                        SSLCertificateFile)    new="$SSL_CERT" ;;
-                        SSLCertificateKeyFile) new="$SSL_KEY" ;;
+                        SSLCertificateFile|ssl_certificate)     new="$SSL_CERT" ;;
+                        SSLCertificateKeyFile|ssl_certificate_key) new="$SSL_KEY" ;;
                         *)                     new="$(_rcp_remap_proj "$path")" ;;
                     esac
                     # No inner quotes: they would be injected literally here. Safe
