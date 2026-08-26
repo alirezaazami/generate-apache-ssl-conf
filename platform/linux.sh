@@ -53,8 +53,12 @@ ensure_web_root() {
 
 # Prepare nginx before writing vhosts. On Debian the nginx package already runs
 # workers as www-data and /var/www is readable, so we only ensure the sites dir.
+# Also disable the stock "default" site: it has no .conf suffix, so the sites-dir
+# wipe in run-nginx.sh (rm -f *.conf) never removes it, and it listens on port 80
+# — colliding with Apache and failing the whole nginx service to start.
 nginx_bootstrap() {
     sudo mkdir -p "$NGINX_SITES_DIR"
+    sudo rm -f "${NGINX_SITES_DIR}/default"
 }
 
 # --- Packages ---------------------------------------------------------------
