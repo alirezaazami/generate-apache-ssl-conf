@@ -168,6 +168,22 @@ rewrite_conf_paths() {
                     *snippets/fastcgi-php.conf*) nginx_php_location_extra; continue ;;
                 esac
                 ;;
+            listen)       # nginx: "listen 80;" / "listen [::]:80;"
+                # All generated nginx vhosts must share $NGINX_LISTEN_PORT so they
+                # coexist with Apache on 80/443 (see run-nginx.sh). A per-project
+                # nginx.conf carried over from elsewhere (e.g. a production config)
+                # can declare a different port; left as-is it silently breaks nginx
+                # for EVERY site (bind() fails for the whole service, not just this
+                # one), so force it back and warn loudly instead of failing quietly.
+                if [ -n "$NGINX_LISTEN_PORT" ]; then
+                    local cur_port
+                    cur_port="$(printf '%s' "$line" | grep -oE '[0-9]+' | head -1)"
+                    if [ -n "$cur_port" ] && [ "$cur_port" != "$NGINX_LISTEN_PORT" ]; then
+                        log_error "WARNING: ${src} declares 'listen ${cur_port}', which conflicts with Apache/other services — forcing it to ${NGINX_LISTEN_PORT}."
+                        line="${line//$cur_port/$NGINX_LISTEN_PORT}"
+                    fi
+                fi
+                ;;
         esac
         printf '%s\n' "$line"
     done < "$src"
