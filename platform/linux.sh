@@ -99,10 +99,41 @@ php_set_default_cli() {
     sudo update-alternatives --set php "/usr/bin/php${1}"
 }
 
+# Ubuntu ships only one PHP version (noble: 8.3). Every other version comes from
+# the ondrej/php PPA, so make sure it is configured before any php<ver> install.
+# Written as a deb822 source directly (rather than add-apt-repository) so it
+# works on Ubuntu derivatives like Zorin by using UBUNTU_CODENAME, and is a
+# no-op if the PPA is already present.
+PHP_PPA_KEY="4F4EA0AAE5267A6C"
+PHP_PPA_FILE="/etc/apt/sources.list.d/ondrej-php.sources"
+php_ensure_repo() {
+    if grep -rqs "ppa.launchpadcontent.net/ondrej/php" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
+        return 0
+    fi
+    local codename
+    codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")"
+    log_info "Adding ondrej/php PPA (${codename})..."
+    pkg_install ca-certificates curl gnupg
+    sudo mkdir -p /etc/apt/keyrings
+    if ! curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${PHP_PPA_KEY}" \
+            | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/ondrej-php.gpg; then
+        log_error "Could not download the ondrej/php signing key"
+        return 1
+    fi
+    printf '%s\n' \
+        "Types: deb" \
+        "URIs: https://ppa.launchpadcontent.net/ondrej/php/ubuntu" \
+        "Suites: ${codename}" \
+        "Components: main" \
+        "Signed-By: /etc/apt/keyrings/ondrej-php.gpg" | sudo tee "$PHP_PPA_FILE" >/dev/null
+    sudo apt-get update
+}
+
 # Install a PHP version and the standard extension set.
 php_install_version() {
     local ver="$1"
-    local pkgs=("php${ver}" "php${ver}-fpm" "libapache2-mod-php${ver}")
+    php_ensure_repo || return 1
+    local pkgs=("php${ver}" "php${ver}-fpm")
     local ext
     for ext in "${PHP_EXTENSIONS[@]}"; do
         pkgs+=("php${ver}-${ext}")
@@ -131,24 +162,35 @@ php_xdebug_available() { return 0; }
 php_ensure_config() {
     local ver="$1" ini
     ini="$(php_ini "$ver" fpm)"
-    if [ ! -f "$ini" ]; then
+    if [ ! -f "$ini" ] && pkg_is_installed "php${ver}-fpm"; then
         log_info "Restoring missing config for php${ver}..."
         sudo DEBIAN_FRONTEND=noninteractive apt-get \
             -o Dpkg::Options::="--force-confmiss" install --reinstall -y "php${ver}-fpm" || true
     fi
 }
 
-# Enable the Apache modules + PHP handler/conf for this version.
+# Every vhost talks to PHP-FPM over proxy_fcgi, so mod_php must NOT be loaded:
+# two libphpX.Y.so modules in one Apache process segfault it on start.
+apache_disable_mod_php() {
+    local mod
+    for mod in $(ls /etc/apache2/mods-enabled 2>/dev/null | sed -n 's/^\(php[0-9.]*\)\.load$/\1/p'); do
+        log_info "Disabling mod_${mod} (PHP runs via FPM)"
+        sudo a2dismod "$mod" >/dev/null 2>&1 || true
+    done
+}
+
+# Enable the Apache modules + PHP-FPM handler/conf for this version.
 php_wire_into_apache() {
     local ver="$1"
     apache_enable_modules proxy_fcgi setenvif actions alias rewrite
-    sudo a2enmod "php${ver}" 2>/dev/null || true
+    apache_disable_mod_php
     sudo a2enconf "php${ver}-fpm" 2>/dev/null || true
 }
 
 # Install just the FPM package for a version (lighter than php_install_version).
 php_fpm_install() {
     local ver="$1"
+    php_ensure_repo || return 1
     pkg_is_installed "php${ver}-fpm" || pkg_install "php${ver}-fpm"
 }
 

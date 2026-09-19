@@ -30,6 +30,12 @@ ver="${1#php}"
 php_install_version "$ver"
 php_ensure_config "$ver"
 
+# Bail out early with a clear message instead of failing later on a missing php.ini.
+if ! php_is_installed "$ver" || [ ! -f "$(php_ini "$ver" fpm)" ]; then
+    log_error "php${ver} did not install (no $(php_ini "$ver" fpm)). Check the apt errors above."
+    exit 1
+fi
+
 # 2. Apply development-friendly php.ini limits (FPM ini on Linux, single ini on macOS).
 ini="$(php_ini "$ver" fpm)"
 log_info "Tuning ${ini}..."

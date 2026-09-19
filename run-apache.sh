@@ -110,6 +110,7 @@ platform_bootstrap
 
 log_info "Enabling Apache modules..."
 apache_enable_modules rewrite setenvif ssl alias actions headers proxy proxy_http proxy_fcgi
+apache_disable_mod_php
 
 log_info "Stopping ${APACHE_SERVICE}..."
 svc_stop "$APACHE_SERVICE" || true

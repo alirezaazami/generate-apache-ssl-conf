@@ -332,6 +332,9 @@ php_wire_into_apache() {
     apache_enable_modules proxy proxy_fcgi setenvif actions alias rewrite
 }
 
+# Homebrew's httpd never loads mod_php here (PHP runs via FPM), so nothing to do.
+apache_disable_mod_php() { :; }
+
 # Install the PHP formula for a version if missing (bundles FPM).
 php_fpm_install() {
     local ver="$1"

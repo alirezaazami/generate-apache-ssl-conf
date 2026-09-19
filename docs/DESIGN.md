@@ -149,6 +149,8 @@ Every `platform/<os>.sh` MUST define these. Adding a third OS = implement this l
 | `ioncube_loader_file <ver>` / `sourceguardian_loader_file <ver>` | Absolute path of the loader `.so` for a version. |
 | `download_url <url> <dest>` | *(common.sh)* Portable download via curl (macOS) or wget. |
 | `php_set_default_cli <ver>` | `update-alternatives` / `brew link`. |
+| `apache_disable_mod_php` | Unload any `mod_php` (Linux `a2dismod`; macOS no-op) — vhosts use FPM and two mod_php builds segfault Apache. |
+| `php_ensure_repo` | (Linux only, internal) Add the ondrej/php PPA if missing; called by `php_install_version`/`php_fpm_install`. |
 | `php_install_version <ver>` | Install runtime + our standard extension set for a version. |
 | `php_ensure_config <ver>` | Restore a missing `php.ini` (Linux reinstall / macOS template copy). |
 | `php_xdebug_ini <ver>` | Path to the Xdebug ini file to write for a version. |
