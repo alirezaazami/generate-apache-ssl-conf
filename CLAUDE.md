@@ -65,9 +65,11 @@ Both scripts follow the same pattern:
 
 ### PHP version management
 
-- `switch_php.sh <version>` — `php_install_version` (runtime + standard extensions), `ini_set` for the dev `php.ini` limits, writes the Xdebug ini at `php_xdebug_ini`, `php_set_default_cli`, `php_wire_into_apache`, restart.
-- `xdebug-switche.sh <version>` toggles Xdebug by commenting/uncommenting `zend_extension=xdebug.so` in `php_xdebug_ini` (portable awk), then restarts the version's FPM and whichever web server is active.
+- `switch_php.sh <version>` — by default only `php_set_default_cli` for an already-installed version (installs nothing; errors if missing). `switch_php.sh --install <version>` — `php_install_version` (runtime + standard extensions), `ini_set` for the dev `php.ini` limits, writes the Xdebug ini at `php_xdebug_ini`, `php_set_default_cli`, `php_wire_into_apache`, restart.
+- `xdebug-switche.sh [on|off] [version]` (`idev-xdebug`, args in any order) sets Xdebug on/off by uncommenting/commenting `zend_extension=xdebug.so` in `php_xdebug_ini` (portable awk) for every installed version, or only the given one; then restarts running FPMs and whichever web server is active. Without `on`/`off` it only prints a per-version status report.
 - `add_xdebug_config.sh` iterates `php_installed_versions` and overwrites each version's existing Xdebug ini with one canonical config (paths under `$WEB_ROOT`).
+- The canonical Xdebug ini lives in one place, `xdebug_write_ini` (`common.sh`), used by both `switch_php.sh --install` and `add_xdebug_config.sh`; it defaults to `xdebug.start_with_request=no` and keeps an already-commented `zend_extension` line commented.
+- `xdebug-always.sh on|off` (`idev-xdebug-always`) sets `xdebug.start_with_request` to `yes`/`no` via `ini_set` in every installed version's Xdebug ini, then restarts running FPMs and the active web server; no argument prints the current value per version.
 
 ### Commercial PHP loaders
 

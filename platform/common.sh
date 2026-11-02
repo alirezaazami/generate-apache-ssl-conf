@@ -200,6 +200,7 @@ TOOL_SCRIPTS=(
     run-nginx.sh
     create-site.sh
     xdebug-switche.sh
+    xdebug-always.sh
     install_ioncube.sh
     install_sourceguardian.sh
     add_xdebug_config.sh
@@ -214,6 +215,7 @@ tool_command_name() {
         run-nginx.sh)              echo "idev-nginx" ;;
         create-site.sh)            echo "idev-site" ;;
         xdebug-switche.sh)         echo "idev-xdebug" ;;
+        xdebug-always.sh)          echo "idev-xdebug-always" ;;
         install_ioncube.sh)        echo "idev-ioncube" ;;
         install_sourceguardian.sh) echo "idev-sourceguardian" ;;
         add_xdebug_config.sh)      echo "idev-xdebug-config" ;;
@@ -304,9 +306,10 @@ Bonjour/mDNS and every lookup stalls ~5s before falling back to /etc/hosts.
 
 Commands (call from anywhere once installed):
   idev                       Show this guide and current status.
-  idev-php <version>         Install a PHP version + extensions and make it the
-                             default CLI PHP (e.g. idev-php 8.3). This is how you
-                             switch the default PHP version.
+  idev-php <version>         Switch the default CLI PHP to an installed version
+                             (e.g. idev-php 8.3); installs nothing.
+  idev-php --install <ver>   Install a PHP version + extensions, configure it,
+                             and make it the default CLI PHP.
   idev-apache                (Re)generate Apache vhosts for every project and
                              serve them on 80/443 with a local TLS cert.
   idev-nginx                 (Re)generate Nginx vhosts and serve on port 8000.
@@ -316,18 +319,21 @@ Commands (call from anywhere once installed):
                              --port <port>     (node reverse-proxy target)
                              e.g. idev-site api.test --type laravel --php 8.3
                                   idev-site app.test --type node --port 3000
-  idev-xdebug <version>      Toggle Xdebug on/off for a PHP version.
+  idev-xdebug [on|off] [ver] Turn Xdebug on/off for all versions (or one);
+                             no on/off = status report.
+  idev-xdebug-always on|off  Start a debug session on EVERY request (on) or not
+                             (off, the default) — all installed versions.
   idev-ioncube               Install the IonCube loader for all PHP versions.
   idev-sourceguardian        Install the SourceGuardian loader for all versions.
   idev-xdebug-config         Reset Xdebug config across all installed versions.
 
 Typical order:
   1. ./easy-start.sh         One-shot: sets everything up + PHP 8.3 (Xdebug off).
-  2. idev-php <version>      Add another PHP version whenever you need one.
+  2. idev-php --install <v>  Add another PHP version whenever you need one.
   3. idev-site <domain> ...  Scaffold a project (php/wordpress/laravel/node) and
                              serve it — or just drop a folder in ${WEB_ROOT} and
                              run idev-apache / idev-nginx.
-  4. idev-xdebug <version>   Turn Xdebug on when you need to debug.
+  4. idev-xdebug on          Turn Xdebug on when you need to debug.
 
 Per-project type / PHP version: idev-site writes an "apache.conf" (and
 "nginx.conf") inside the project folder — docroot, PHP version (or node proxy
@@ -337,7 +343,31 @@ those files.
 EOF
 }
 
-# --- Default PHP version -----------------------------------------------------
+# --- Xdebug ini --------------------------------------------------------------
+# Write the one canonical Xdebug config to <file> (used by switch_php.sh and
+# add_xdebug_config.sh so they never drift apart). start_with_request defaults to
+# "no" — Xdebug is loaded but does not connect to the IDE on every request;
+# xdebug-always.sh flips it to "yes" across all versions. If <file> already has
+# the extension commented out (xdebug-switche.sh "off"), that state is kept.
+#
+#   xdebug_write_ini /etc/php/8.3/mods-available/xdebug.ini
+xdebug_write_ini() {
+    local file="$1" ext="zend_extension=xdebug.so"
+    [ -f "$file" ] && grep -q '^#zend_extension=xdebug.so' "$file" && ext="#${ext}"
+    sudo mkdir -p "$(dirname "$file")"
+    printf '%s\n' \
+        "$ext" \
+        "xdebug.mode=debug,develop" \
+        "xdebug.start_with_request=no" \
+        "xdebug.log_level=0" \
+        "xdebug.var_display_max_depth=10" \
+        "xdebug.var_display_max_children=10" \
+        "xdebug.var_display_max_data=-1" \
+        "xdebug.log=${WEB_ROOT}/xdebug_error.log" \
+        "xdebug.output_dir=${WEB_ROOT}/" \
+        "xdebug.client_port=9003" | sudo tee "$file" >/dev/null
+}
+
 # --- Service helpers --------------------------------------------------------
 # Wait for a service to report active. Both `brew services start` and
 # `systemctl start` return before the job is fully up, so checking immediately

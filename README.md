@@ -52,11 +52,13 @@ Once `easy-start.sh` (or `idev-*` via `install_to_path`) has run, these are on P
 | Command | What it does |
 |---|---|
 | `idev` | Show the guide **and current status** (installed versions, default PHP, servers, projects). |
-| `idev-php <version>` | Install a PHP version + standard extensions and **make it the default CLI PHP** (e.g. `idev-php 8.3`). This is how you switch the default version. |
+| `idev-php <version>` | **Switch the default CLI PHP** to an already-installed version (e.g. `idev-php 8.3`). Installs nothing; errors if the version is missing. |
+| `idev-php --install <version>` | Install a PHP version + standard extensions, tune `php.ini`, configure Xdebug, wire it into Apache, and make it the default. |
 | `idev-apache` | (Re)generate Apache vhosts for every project; serve on 80/443 with TLS. |
 | `idev-nginx` | (Re)generate Nginx vhosts; serve on port 8000. |
 | `idev-site <domain> [opts]` | Scaffold **one** project by type (php/wordpress/laravel/node) and activate it. See below. |
-| `idev-xdebug <version>` | Toggle Xdebug on/off for a PHP version. |
+| `idev-xdebug [on\|off] [version]` | Turn Xdebug on/off for **all** installed versions, or just one if a version is given. Without `on`/`off` it prints a status report (extension on/off + `start_with_request`) per version. |
+| `idev-xdebug-always on\|off` | Start a debug session on **every** request (`on` → `start_with_request=yes`) or not (`off` → `no`, the default), across all installed versions. No argument shows the current value. |
 | `idev-ioncube` | Install the IonCube loader for all installed PHP versions. |
 | `idev-sourceguardian` | Install the SourceGuardian loader for all installed versions. |
 | `idev-xdebug-config` | Reset/normalize the Xdebug config across all installed versions. |
@@ -95,7 +97,7 @@ idev-site app.test  --type node      --port 3000 # reverse-proxy to 127.0.0.1:30
 | `laravel` | `<project>/public` | PHP-FPM (Laravel front controller) |
 | `node` | — | reverse proxy to `http://127.0.0.1:<port>` |
 
-Options: `--type`, `--php <version>` (must be installed — `idev-php <v>` first),
+Options: `--type`, `--php <version>` (must be installed — `idev-php --install <v>` first),
 `--port <port>` (node; prompted if omitted), `--server apache|nginx|both`,
 `--dry-run` (print the vhost(s) without writing anything).
 
@@ -118,7 +120,7 @@ The default PHP version (used by all sites) is whatever `idev-php` last activate
 To pin **one** project to a **different** version, the easy way is:
 
 ```bash
-idev-php 7.4                          # install the version if you don't have it
+idev-php --install 7.4                # install the version if you don't have it
 idev-site myapp.test --php 7.4        # scaffold/repin this site to 7.4
 ```
 
@@ -134,8 +136,8 @@ FPM sockets live at `$(brew --prefix)/var/run/php@<version>-fpm.sock` on macOS a
 ## Switching the default PHP version
 
 ```bash
-idev-php 8.1     # installs 8.1 if needed, then makes it the default CLI + FPM
-idev-php 8.3     # switch back
+idev-php --install 8.1   # install 8.1 + make it the default CLI + FPM
+idev-php 8.3             # switch back (no install)
 ```
 
 ## Validating changes to the scripts

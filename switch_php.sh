@@ -1,12 +1,15 @@
 #!/bin/bash
 #
-# switch_php.sh <php_version>
+# switch_php.sh [--install] <php_version>
 #
-# Installs a PHP version and the standard extension set, applies dev-friendly
-# php.ini limits, configures Xdebug, makes it the default CLI PHP, and wires it
-# into Apache. Cross-platform (Linux + macOS) via platform/ — see docs/DESIGN.md.
+# By default only switches the default CLI PHP to an already-installed version;
+# nothing is installed or reconfigured, and a missing version is an error.
+# With --install, installs the version and the standard extension set, applies
+# dev-friendly php.ini limits, configures Xdebug, makes it the default CLI PHP,
+# and wires it into Apache. Cross-platform (Linux + macOS) via platform/ — see docs/DESIGN.md.
 #
-#   ./switch_php.sh 8.3        # or ./switch_php.sh php8.3
+#   ./switch_php.sh 8.3              # switch only (or ./switch_php.sh php8.3)
+#   ./switch_php.sh --install 8.3    # install/reconfigure, then switch
 
 set -e
 
@@ -16,15 +19,35 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/platform/detect.sh"
 
 require_root "$@"
-platform_bootstrap
+
+force_install=0
+if [ "$1" = "--install" ]; then
+    force_install=1
+    shift
+fi
 
 if [ $# -eq 0 ]; then
-    log_error "Usage: $0 <php_version>   (e.g. $0 8.3 or $0 php8.3)"
+    log_error "Usage: $0 [--install] <php_version>   (e.g. $0 8.3 or $0 php8.3)"
     exit 1
 fi
 
 # Accept "8.3" or "php8.3"; the rest of the tool uses the dotted version.
 ver="${1#php}"
+
+# Default: just switch the default CLI PHP, without installing, updating or
+# reconfiguring anything. Installing requires an explicit --install.
+if [ "$force_install" -eq 0 ]; then
+    if php_is_installed "$ver" && command -v "$(php_bin "$ver")" >/dev/null 2>&1; then
+        php_set_default_cli "$ver"
+        log_ok "Default CLI PHP is now php${ver} (nothing installed or changed)."
+        exit 0
+    fi
+    log_error "php${ver} is not installed. Installed: $(php_installed_versions | tr '\n' ' ')"
+    log_error "To install it: $0 --install ${ver}"
+    exit 1
+fi
+
+platform_bootstrap
 
 # 1. Install runtime + extensions, and make sure a php.ini exists.
 php_install_version "$ver"
@@ -51,15 +74,7 @@ ini_set "$ini" upload_max_filesize 1024M
 if php_xdebug_available "$ver"; then
     xdebug_ini="$(php_xdebug_ini "$ver")"
     log_info "Configuring Xdebug at ${xdebug_ini}..."
-    sudo mkdir -p "$(dirname "$xdebug_ini")"
-    printf '%s\n' \
-        "zend_extension=xdebug.so" \
-        "xdebug.mode=debug,develop" \
-        "xdebug.start_with_request=yes" \
-        "xdebug.log_level=0" \
-        "xdebug.log=${WEB_ROOT}/xdebug_error.log" \
-        "xdebug.output_dir=${WEB_ROOT}/" \
-        "xdebug.client_port=9003" | sudo tee "$xdebug_ini" >/dev/null
+    xdebug_write_ini "$xdebug_ini"
 else
     log_info "Xdebug not available for PHP ${ver}; skipping Xdebug config."
 fi
@@ -78,4 +93,4 @@ else
     svc_start "$fpm"
 fi
 
-log_ok "php${ver} installed and configured."
+log_ok "php${ver} installed, configured and set as default."

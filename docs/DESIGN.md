@@ -193,11 +193,12 @@ inline.
 
 | Script | Ported | Notes |
 |---|---|---|
-| `switch_php.sh` | ✅ | install version + tune ini + Xdebug + set default + wire Apache |
+| `switch_php.sh` | ✅ | default: set default CLI only (installed versions); `--install`: install version + tune ini + Xdebug + set default + wire Apache |
 | `run-apache.sh` | ✅ | inline vhost gen; fixed FPM-socket-vs-version + cert `.pem/.crt` bugs |
 | `run-nginx.sh` | ✅ | HTTP on port 8000 (unchanged); portable fastcgi snippet |
-| `xdebug-switche.sh` | ✅ | portable awk comment-toggle |
-| `add_xdebug_config.sh` | ✅ | normalizes Xdebug across all installed versions |
+| `xdebug-switche.sh` | ✅ | on/off (all versions or one) + status report, portable awk comment-toggle |
+| `add_xdebug_config.sh` | ✅ | normalizes Xdebug across all installed versions (`xdebug_write_ini`) |
+| `xdebug-always.sh` | ✅ | `start_with_request` yes/no across all versions via `ini_set` |
 | `install_ioncube.sh` | ✅ | local tarball fallback (Linux); loader/URL abstracted |
 | `install_sourceguardian.sh` | ✅ | download-only; loader/URL abstracted |
 

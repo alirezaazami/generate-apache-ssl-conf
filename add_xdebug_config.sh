@@ -25,16 +25,7 @@ for ver in $(php_installed_versions); do
         log_info "PHP ${ver}: no Xdebug ini (${xdebug_ini}) — skipping"
         continue
     fi
-    printf '%s\n' \
-        "zend_extension=xdebug.so" \
-        "xdebug.mode=debug,develop" \
-        "xdebug.start_with_request=no" \
-        "xdebug.log_level=0" \
-        "xdebug.var_display_max_depth=10" \
-        "xdebug.var_display_max_children=10" \
-        "xdebug.var_display_max_data=-1" \
-        "xdebug.log=${WEB_ROOT}/xdebug_error.log" \
-        "xdebug.output_dir=${WEB_ROOT}/" | sudo tee "$xdebug_ini" >/dev/null
+    xdebug_write_ini "$xdebug_ini"
     log_ok "Updated ${xdebug_ini}"
     updated=1
 done

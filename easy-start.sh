@@ -42,13 +42,13 @@ if php_is_installed "$DEFAULT_PHP_VERSION"; then
     php_set_default_cli "$DEFAULT_PHP_VERSION"
 else
     log_info "Installing PHP ${DEFAULT_PHP_VERSION} (this compiles PECL extensions and takes a while)..."
-    "${SCRIPT_DIR}/switch_php.sh" "$DEFAULT_PHP_VERSION"
+    "${SCRIPT_DIR}/switch_php.sh" --install "$DEFAULT_PHP_VERSION"
 fi
 
 # 4. Make sure Xdebug is OFF by default (comment its line if currently enabled).
 xini="$(php_xdebug_ini "$DEFAULT_PHP_VERSION")"
 if [ -f "$xini" ] && grep -q '^zend_extension=xdebug.so' "$xini"; then
-    log_info "Disabling Xdebug by default (turn it on later with: idev-xdebug ${DEFAULT_PHP_VERSION})..."
+    log_info "Disabling Xdebug by default (turn it on later with: idev-xdebug on)..."
     tmp="$(mktemp)"
     awk '{ if ($0 == "zend_extension=xdebug.so") print "#" $0; else print }' "$xini" > "$tmp"
     sudo cp "$tmp" "$xini"

@@ -40,7 +40,7 @@ Options:
   --type <type>         php (default) | wordpress | laravel | node
   --php  <version>      PHP version for php/wordpress/laravel (default: current
                         default CLI PHP). The version must already be installed
-                        (install it with: idev-php <version>).
+                        (install it with: idev-php --install <version>).
   --port <port>         Upstream port for --type node (required for node).
   --server <which>      apache | nginx | both   (default: both)
   --dry-run             Print the vhost(s) that would be written, then exit
@@ -122,7 +122,7 @@ else
     fi
     # Under --dry-run we only render, so a missing version is fine to preview.
     if [ -z "$dry_run" ] && ! php_is_installed "$php_ver"; then
-        log_error "PHP ${php_ver} is not installed. Install it first:  idev-php ${php_ver}"
+        log_error "PHP ${php_ver} is not installed. Install it first:  idev-php --install ${php_ver}"
         exit 1
     fi
 fi
